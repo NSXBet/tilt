@@ -1,0 +1,55 @@
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          UPSTREAM_REPO=$(gh api repos/${{ github.repository }} --jq '.parent.full_name')
+          if [ -z "$UPSTREAM_REPO" ]; then
+            echo "::error::Not a GitHub fork; set UPSTREAM_REPO variable"
+            exit 1
+          fi
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream master
+
+      - name: Rebase fork commits on upstream
+        run: |
+          BEHIND=$(git rev-list --count origin/master..upstream/master)
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date"
+            exit 0
+          fi
+          echo "Fork is $BEHIND commit(s) behind upstream"
+          git log --oneline origin/master..upstream/master
+
+          # No fork-only commits: fast-forward. Otherwise rebase them on top.
+          if [ "$(git rev-list --count upstream/master..origin/master)" -eq 0 ]; then
+            git merge --ff-only upstream/master
+          else
+            git rebase upstream/master
+          fi
+
+      - name: Push
+        run: git push origin master --force-with-lease

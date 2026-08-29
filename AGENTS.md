@@ -27,6 +27,6 @@ Upstream: `https://github.com/tilt-dev/tilt` (default branch `master`).
 
 ## Upstream sync
 
-- `.github/workflows/smart-fork-sync.yml` rebases fork commits onto upstream
-  `master` on schedule. Conflicts are resolved by Claude CLI with fork
-  customizations taking priority. Do not merge upstream into master manually.
+- `.github/workflows/sync-upstream.yml` rebases fork commits onto upstream
+  `master` on schedule (every 6h). No AI conflict resolution — on conflict the
+  run fails and must be resolved manually.
