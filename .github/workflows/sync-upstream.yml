@@ -12,7 +12,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
     steps:
+
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
