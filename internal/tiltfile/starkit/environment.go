@@ -36,6 +36,16 @@ const ctxKey = "starkit.Ctx"
 const startTfKey = "starkit.StartTiltfile"
 const execingTiltfileKey = "starkit.ExecingTiltfile"
 
+const worktreeContextKey = "starkit.WorktreeContext"
+
+// WorktreeContext identifies a re-execution of a root Tiltfile for one
+// worktree. It is held on each Starlark thread so concurrent environments
+// cannot leak their execution roots into one another.
+type WorktreeContext struct {
+	Name string
+	Dir  string
+}
+
 // Unpacks args, using the arg unpacker on the current thread.
 func UnpackArgs(t *starlark.Thread, fnName string, args starlark.Tuple, kwargs []starlark.Tuple, pairs ...interface{}) error {
 	unpacker, ok := t.Local(argUnpackerKey).(ArgUnpacker)
@@ -62,6 +72,7 @@ type Environment struct {
 	plugins          []Plugin
 	fakeFileSystem   map[string]string
 	loadInterceptors []LoadInterceptor
+	worktree         WorktreeContext
 
 	builtinCalls []BuiltinCall
 }
@@ -166,6 +177,12 @@ func (e *Environment) SetContext(ctx context.Context) {
 	e.ctx = ctx
 }
 
+// SetWorktreeContext configures the context injected into every thread created
+// by this environment. An empty Dir preserves normal file-relative behavior.
+func (e *Environment) SetWorktreeContext(worktree WorktreeContext) {
+	e.worktree = worktree
+}
+
 // Set a fake file system so that we can write tests that don't
 // touch the file system. Expressed as a map from paths to contents.
 func (e *Environment) SetFakeFileSystem(files map[string]string) {
@@ -178,6 +195,7 @@ func (e *Environment) newThread(model Model) *starlark.Thread {
 	t.Print = e.print
 	t.SetLocal(argUnpackerKey, e.unpackArgs)
 	t.SetLocal(startTfKey, e.startTf)
+	t.SetLocal(worktreeContextKey, e.worktree)
 	return t
 }
 

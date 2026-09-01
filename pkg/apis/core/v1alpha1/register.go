@@ -40,6 +40,18 @@ const AnnotationManagedBy = "tilt.dev/managed-by"
 // AnnotationManifest identifies which manifest an object's logs should appear under.
 const AnnotationManifest = "tilt.dev/resource"
 
+// LabelWorktree marks an object (a Tiltfile CR, a workload clone, a
+// UIResource) as belonging to a git-worktree re-execution of the root
+// Tiltfile (multi-worktree parallel development); its value is the worktree
+// name. No label means the main run.
+const LabelWorktree = "tilt.dev/worktree"
+
+// AnnotationWorktree stamps a clone applied on behalf of a worktree run
+// (plan §4.2): the clone name is suffixed and this annotation names the
+// owning worktree, so the reconciler can prune clones whose worktree CR
+// vanished.
+const AnnotationWorktree = "tilt.dev/worktree"
+
 // An annotation on any object that identifies which span id
 // its logs should appear under.
 const AnnotationSpanID = "tilt.dev/log-span-id"

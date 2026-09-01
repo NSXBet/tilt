@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-usj",
+  "title": "TUI worktree grouping|internal/hud/view/view.go Resource gains Worktree string (from labels); StateToTerminalView (internal/hud/view.go:19) populates. renderer.go/resourceview.go/tabview.go: group headers per worktree, filter matches worktree/ prefix, name shown in rows. Renderer tests per renderer_test.go patterns.",
+  "description": "",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:29:01.554Z",
+  "updated_at": "2026-08-30T12:52:08.445Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "Full spec: plan section 9.",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [
+    {
+      "issue_id": "tk-usj",
+      "depends_on_id": "tk-a6u",
+      "type": "blocks",
+      "created_at": "2026-08-29T22:29:32.163Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 1,
+  "dependent_count": 1,
+  "comments": [],
+  "comment_count": 0
+}

@@ -16,6 +16,7 @@ import {
   orderLabels,
   TILTFILE_LABEL,
   UNLABELED_LABEL,
+  worktreeGroupLabel,
 } from "./labels"
 import { OverviewSidebarOptions } from "./OverviewSidebarOptions"
 import PathBuilder from "./PathBuilder"
@@ -366,7 +367,15 @@ function resourcesLabelView(
   const tiltfile: SidebarItem[] = []
 
   items.forEach((item) => {
-    if (item.labels.length) {
+    // Worktree resources always get their own section, keyed by the
+    // prefixed display label, regardless of any user labels (plan §8).
+    if (item.worktree) {
+      const groupLabel = worktreeGroupLabel(item.worktree)
+      if (!labelsToResources.hasOwnProperty(groupLabel)) {
+        labelsToResources[groupLabel] = []
+      }
+      labelsToResources[groupLabel].push(item)
+    } else if (item.labels.length) {
       item.labels.forEach((label) => {
         if (!labelsToResources.hasOwnProperty(label)) {
           labelsToResources[label] = []
@@ -510,7 +519,7 @@ export class SidebarResources extends React.Component<SidebarProps> {
     const features = this.context as React.ContextType<typeof FeaturesContext>
     const labelsEnabled: boolean = features.isEnabled(Flag.Labels)
     const resourcesHaveLabels = this.props.items.some(
-      (item) => item.labels.length > 0
+      (item) => item.labels.length > 0 || item.worktree !== ""
     )
 
     // The label group tip is only displayed if labels are enabled but not used

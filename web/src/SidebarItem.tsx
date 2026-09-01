@@ -1,7 +1,7 @@
 import moment from "moment"
 import { buildAlerts, runtimeAlerts } from "./alerts"
 import { Hold } from "./Hold"
-import { getResourceLabels } from "./labels"
+import { getResourceLabels, getResourceWorktree } from "./labels"
 import { LogAlertIndex } from "./LogStore"
 import { resourceTargetType } from "./ResourceStatus"
 import { buildStatus, runtimeStatus } from "./status"
@@ -25,6 +25,7 @@ class SidebarItem {
   runtimeAlertCount: number
   hasEndpoints: boolean
   labels: string[]
+  worktree: string
   lastBuildDur: moment.Duration | null
   lastDeployTime: string
   pendingBuildSince: string
@@ -56,6 +57,7 @@ class SidebarItem {
     this.runtimeAlertCount = runtimeAlerts(res, logAlertIndex).length
     this.hasEndpoints = (status.endpointLinks || []).length > 0
     this.labels = getResourceLabels(res)
+    this.worktree = getResourceWorktree(res)
     this.lastBuildDur =
       lastBuild && lastBuild.startTime && lastBuild.finishTime
         ? timeDiff(lastBuild.startTime, lastBuild.finishTime)

@@ -34,6 +34,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/store/tiltfiles"
 	"github.com/tilt-dev/tilt/internal/store/uibuttons"
 	"github.com/tilt-dev/tilt/internal/store/uiresources"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/internal/token"
 	"github.com/tilt-dev/tilt/pkg/logger"
 	"github.com/tilt-dev/tilt/pkg/model"
@@ -44,6 +45,11 @@ import (
 // Upper seems like a poor and undescriptive name.
 type Upper struct {
 	store *store.Store
+
+	// Multi-worktree parallel development is staged behind this flag
+	// (plan §10: dark flag). True in `tilt up`; tests construct Upper
+	// directly and opt in by setting the field.
+	worktreesEnabled bool
 }
 
 type ServiceWatcherMaker func(context.Context, *store.Store) error
@@ -85,6 +91,20 @@ func (u Upper) Start(
 	if err != nil {
 		return err
 	}
+
+	// Position-based worktree discovery (plan §2): every subdirectory of the
+	// worktree dir containing a Tiltfile is a worktree. Seed the discovered
+	// set into the engine state before the configs controller runs, so it
+	// creates one Tiltfile CR per execution. A missing worktree dir means no
+	// worktrees: classic single-Tiltfile behavior.
+	var worktrees []worktree.Worktree
+	if u.worktreesEnabled {
+		worktrees, err = worktree.Discover(filepath.Dir(absTfPath), worktree.DefaultDir)
+		if err != nil {
+			return err
+		}
+	}
+
 	return u.Init(ctx, InitAction{
 		TiltfilePath:     absTfPath,
 		UserArgs:         args,
@@ -94,6 +114,7 @@ func (u Upper) Start(
 		Token:            token,
 		CloudAddress:     cloudAddress,
 		TerminalMode:     initTerminalMode,
+		Worktrees:        worktrees,
 	})
 }
 
@@ -283,6 +304,7 @@ func handleInitAction(ctx context.Context, engineState *store.EngineState, actio
 	engineState.CloudAddress = action.CloudAddress
 	engineState.Token = action.Token
 	engineState.TerminalMode = action.TerminalMode
+	engineState.Worktrees = append(engineState.Worktrees[:0], action.Worktrees...)
 }
 
 func handleHudExitAction(state *store.EngineState, action hud.ExitAction) {

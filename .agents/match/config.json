@@ -1,0 +1,12 @@
+{
+  "workers": { "model": "aihub/aihub/glm-5.3-flash" },
+  "controller": {
+    "mode": "active",
+    "workerFloor": 10,
+    "launchTimeoutMs": 600000,
+    "planner": {
+      "enabled": true,
+      "applyMode": "auto_recover"
+    }
+  }
+}

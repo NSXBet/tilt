@@ -1,0 +1,3 @@
+{"issue_id":"tk-yb6","action":"save","at":"2026-08-29T22:26:38.373Z","actor":null,"data":{"status":"open","title":"Phase 3: Ports registry + gateway host-router"}}
+{"issue_id":"tk-yb6","action":"dependency_added","at":"2026-08-29T22:26:46.236Z","actor":"yuri","data":{"target":"tk-xea","type":"blocks"}}
+{"issue_id":"tk-yb6","action":"dependency_removed","at":"2026-08-30T11:26:03.768Z","actor":null,"data":{"target":"tk-xea","type":null}}

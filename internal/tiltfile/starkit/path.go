@@ -16,6 +16,9 @@ func AbsPath(t *starlark.Thread, path string) string {
 }
 
 func AbsWorkingDir(t *starlark.Thread) string {
+	if worktree, ok := t.Local(worktreeContextKey).(WorktreeContext); ok && worktree.Dir != "" {
+		return worktree.Dir
+	}
 	return filepath.Dir(CurrentExecPath(t))
 }
 

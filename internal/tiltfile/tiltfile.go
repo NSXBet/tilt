@@ -35,6 +35,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/tiltfile/value"
 	"github.com/tilt-dev/tilt/internal/tiltfile/version"
 	"github.com/tilt-dev/tilt/internal/tiltfile/watch"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	corev1alpha1 "github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/model"
 	wmanalytics "github.com/tilt-dev/wmclient/pkg/analytics"
@@ -61,6 +62,10 @@ type TiltfileLoadResult struct {
 	ObjectSet           apiset.ObjectSet
 	Hashes              hasher.Hashes
 	CISettings          *corev1alpha1.SessionCISpec
+
+	// Worktree settings from worktree_config() (plan §3, §7.1); Worktree is
+	// the worktree this run executes for ("" for the main run).
+	WorktreeConfig worktree.State
 
 	// For diagnostic purposes only
 	BuiltinCalls []starkit.BuiltinCall `json:"-"`
@@ -179,6 +184,17 @@ func (tfl tiltfileLoader) Load(ctx context.Context, tf *corev1alpha1.Tiltfile, p
 
 	tlr.Tiltignore = tiltignore
 
+	// Per-worktree FileWatch scoping (plan §7.8): for a worktree run, the
+	// .tiltignore patterns still come from the root .tiltignore next to the
+	// shared root Tiltfile, but LocalPath — the base the patterns are
+	// evaluated against — must be the worktree checkout, or global ignores
+	// match main-repo-relative paths while the watched files live in the
+	// worktree. ConfigFiles keep the root .tiltignore so the run still
+	// reloads when it changes.
+	if worktreeName := tf.Labels[worktree.LabelWorktree]; worktreeName != "" {
+		tlr.Tiltignore.LocalPath = worktree.DirOf(absFilename, worktreeName)
+	}
+
 	s := newTiltfileState(ctx, tfl.dcCli, tfl.webHost, tfl.execer, tfl.k8sContextPlugin, tfl.versionPlugin,
 		tfl.configPlugin, tfl.extensionPlugin, tfl.ciSettingsPlugin, feature.FromDefaults(tfl.fDefaults), tfl.portForwards, tfl.startTime)
 
@@ -230,6 +246,9 @@ func (tfl tiltfileLoader) Load(ctx context.Context, tf *corev1alpha1.Tiltfile, p
 
 	ci, _ := cisettings.GetState(result)
 	tlr.CISettings = ci
+
+	wtState, _ := worktree.GetState(result)
+	tlr.WorktreeConfig = wtState
 
 	configSettings, _ := config.GetState(result)
 	if tlr.Error == nil {

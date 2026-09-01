@@ -191,6 +191,21 @@ type KubernetesApplySpec struct {
 	//
 	// +optional
 	ServerSideApply bool `json:"serverSideApply,omitempty" protobuf:"bytes,14,opt,name=serverSideApply"`
+
+	// Worktree names the git worktree this apply belongs to, when the
+	// resource is a worktree clone (multi-worktree development).
+	//
+	// When non-empty, the KubernetesApply controller stamps clones of the
+	// workloads in the YAML (name suffix "-wt-<worktree>", worktree label in
+	// the pod template and selector, tilt.dev/worktree annotation) so that
+	// worktree pods run additively alongside the stable objects. Services
+	// selecting a cloned workload get clone Services with the mutated
+	// selector. Shared objects (ConfigMaps, Secrets) pass through uncloned.
+	//
+	// When empty (the main run), the YAML is applied as-is.
+	//
+	// +optional
+	Worktree string `json:"worktree,omitempty" protobuf:"bytes,15,opt,name=worktree"`
 }
 
 var _ resource.Object = &KubernetesApply{}

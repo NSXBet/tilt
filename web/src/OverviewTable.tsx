@@ -39,6 +39,9 @@ import {
   orderLabels,
   TILTFILE_LABEL,
   UNLABELED_LABEL,
+  WORKTREE_GROUP_PREFIX,
+  getResourceWorktree,
+  worktreeGroupLabel,
 } from "./labels"
 import { LogAlertIndex, useLogAlertIndex } from "./LogStore"
 import {
@@ -419,6 +422,7 @@ function uiResourceToCell(
       isQueued: !!res.queued,
     },
     name: r.metadata?.name ?? "",
+    worktree: getResourceWorktree(r),
     resourceTypeLabel: resourceTypeLabel(r),
     statusLine: {
       buildStatus: buildStatus(r, alertIndex),
@@ -503,7 +507,16 @@ export function labeledResourcesToTableCells(
     const labels = getResourceLabels(r)
     const isTiltfile = r.metadata?.name === ResourceName.tiltfile
     const tableCell = uiResourceToCell(r, buttons, logAlertIndex)
-    if (labels.length) {
+    const worktree = getResourceWorktree(r)
+    if (worktree) {
+      // Worktree resources always get their own group, keyed by the
+      // prefixed display label, regardless of any user labels.
+      const groupLabel = worktreeGroupLabel(worktree)
+      if (!labelsToResources.hasOwnProperty(groupLabel)) {
+        labelsToResources[groupLabel] = []
+      }
+      labelsToResources[groupLabel].push(tableCell)
+    } else if (labels.length) {
       labels.forEach((label) => {
         if (!labelsToResources.hasOwnProperty(label)) {
           labelsToResources[label] = []
@@ -866,8 +879,9 @@ function OverviewTableContent(props: OverviewTableProps) {
   const features = useFeatures()
   const labelsEnabled = features.isEnabled(Flag.Labels)
   const resourcesHaveLabels =
-    props.view.uiResources?.some((r) => getResourceLabels(r).length > 0) ||
-    false
+    props.view.uiResources?.some(
+      (r) => getResourceLabels(r).length > 0 || getResourceWorktree(r) !== ""
+    ) || false
 
   const { options } = useResourceListOptions()
   const resourceFilterApplied = options.resourceNameFilter.length > 0

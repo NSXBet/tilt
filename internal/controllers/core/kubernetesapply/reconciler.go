@@ -430,6 +430,27 @@ func (r *Reconciler) runCmdDeploy(ctx context.Context, spec v1alpha1.KubernetesA
 		return nil, fmt.Errorf("apply command returned malformed YAML: %v\nstdout:\n%s\n", err, overflowEllipsis(string(stdout)))
 	}
 
+	// Worktree interception (plan §4.1): the apply command's stdout YAML
+	// flows through the same clone-stamping pass as inline YAML, so
+	// apply-cmd deploys get worktree parity by construction. The mutated
+	// entities are applied here (the command applied its own output, but
+	// only Tilt knows the clone names) and returned so GC tracks the clones.
+	if spec.Worktree != "" {
+		entities, err = stampWorktreeClones(entities, spec.Worktree)
+		if err != nil {
+			return nil, err
+		}
+		timeout := spec.Timeout.Duration
+		if timeout == 0 {
+			timeout = v1alpha1.KubernetesApplyTimeoutDefault
+		}
+		if _, err := r.k8sClient.Upsert(ctx, entities, timeout, k8s.SSAOptions{}); err != nil {
+			r.printAppliedReport(ctx, "Tried to apply worktree clones to cluster:", entities)
+			return nil, err
+		}
+		r.printAppliedReport(ctx, "Objects applied to cluster:", entities)
+	}
+
 	r.printAppliedReport(ctx, "Objects applied to cluster:", entities)
 
 	return entities, nil
@@ -579,6 +600,17 @@ func (r *Reconciler) createEntitiesToDeploy(ctx context.Context,
 			}
 		} else {
 			l.Debugf("No images injected into Kubernetes YAML")
+		}
+	}
+
+	// Worktree interception (plan §4.1): the clone-stamping pass sits after
+	// all other injections (labels, image digests, pod template hashes), so
+	// clones carry everything the stable entities got, computed from the
+	// stable's spec. The main run (Worktree == "") is a no-op.
+	if spec.Worktree != "" {
+		newK8sEntities, err = stampWorktreeClones(newK8sEntities, spec.Worktree)
+		if err != nil {
+			return nil, errors.Wrapf(err, "stamping worktree clones for %q", spec.Worktree)
 		}
 	}
 

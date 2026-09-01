@@ -183,7 +183,10 @@ func (s *HeadsUpServer) requireToken(next http.Handler) http.Handler {
 }
 
 func (s *HeadsUpServer) Router() http.Handler {
-	return s.router
+	// The gateway host-router (plan §6) sits ahead of the existing routes:
+	// <wt>.tilt.localhost is proxied to that worktree's endpoint; all other
+	// hosts fall through to the main UI unchanged.
+	return s.gatewayHandler(s.router)
 }
 
 func (s *HeadsUpServer) ViewJSON(w http.ResponseWriter, req *http.Request) {

@@ -1,0 +1,51 @@
+{
+  "branch": null,
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-rvw",
+  "title": "Position-based worktree discovery",
+  "description": "",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:27:19.780Z",
+  "updated_at": "2026-08-31T12:46:45.650Z",
+  "started_at": null,
+  "closed_at": "2026-08-31T12:46:45.650Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "Full body was truncated on create; see plan .agents/drafts/multi-worktree-parallel.md section 3 + 7 for complete requirements.\nreferee tk-rvw:referee:1 passed: command=go test ./internal/tiltfile/worktree/ -run TestDiscover -count=1 -race → 9/9 PASS, command=go build ./... exit 0; vet/gofmt clean, note=Routing notes for tk-71n (Combine dedup) and tk-n6q (tiltignore root) attached",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-c7acdd64-9635-4470-918e-f104e7e2e311",
+      "issue_id": "tk-rvw",
+      "author": "yuri",
+      "text": "striker:2 evidence + verdict PASS (discovery scope)\n\nChanged files:\n- internal/tiltfile/worktree/discover_test.go: +3 acceptance-gap tests + git helpers (initGitRepo/runGit, imports os/os/exec/path/filepath)\n- internal/tiltfile/worktree/discover_hidden_test.go: NEW, +1 test\n\nGap tests written (contract: plan §2/§3 via tk-rvw \"Position-based worktree discovery\"):\n- TestDiscover_RealGitWorktreesAndPlainCheckouts — real `git worktree add` (branch + --detach) and a plain dir checkout are discovered by position only; git metadata is not the source of truth; a real worktree WITHOUT a Tiltfile is not discovered. Note: fresh worktrees check out no uncommitted files, so tests write the Tiltfile into the checkout after add.\n- TestDiscover_SkipsHiddenDirs — .worktree/.hidden with a Tiltfile is never a worktree\n- TestDiscover_TiltfileContentIrrelevant — Tiltfile presence, not content, decides\n- TestDiscover_RequiresTiltfileInSubdirRoot — stray files skipped; nested Tiltfile does not count\n\nVerification (commands run, results):\n- go test ./internal/tiltfile/worktree/ -run TestDiscover -count=1 -v → 9/9 PASS (5 pre-existing + 4 new)\n- go vet ./internal/tiltfile/worktree/ → clean; gofmt -l → clean\n- go test ./internal/tiltfile/worktree/ -count=1 -race → no data races (1 unrelated FAIL below)\n- Probe (removed after use): FakeClient notFoundError does NOT satisfy containerd/errdefs IsNotFound — grounds finding 2\n\nSibling failures observed while verifying (NOT in my scope; controller routes):\n1. worktree TestCombine_WorktreeDefinitionWins FAIL: shared manifest appears 2x (main copy + worktree's bare copy). validate.go/prefix.go mtimes advanced mid-session — peer likely in flight (tk-71n).\n2. build TestCanReuseRef_WorktreeTagDistinctFromMain FAIL (tk-7gg): fixture premise wrong per probe above; ImageExists wraps the fake not-found as a hard error. Fix fixture (ImageAlwaysExists=true) or make FakeClient's notFoundError satisfy errdefs.\n3. kubernetesapply TestWorktreeCloneStamping{,_ApplyCmdPath} FAIL: clone stage not yet wired into createEntitiesToDeploy (tk-mzx/tk-jxb).\n4. hud/server TestGatewayWorktreeHostRoutesToWorktreeEndpoint + WebSocketUpgradePassthrough FAIL: gateway router unimplemented (tk-x4j).\n5. internal/portregistry now PASS (earlier build break: SetPortRange undefined — peer resolved).\n6. TestCombine_CrossWorktreeDepError now PASSES after peer's rawRun dep-resolution rework.",
+      "created_at": "2026-08-31T00:05:33.749Z"
+    },
+    {
+      "id": "comment-f44cc6b4-102c-4bd2-93b1-85a274a6cfc6",
+      "issue_id": "tk-rvw",
+      "author": "yuri",
+      "text": "referee tk-rvw:referee:1 passed: command=go test ./internal/tiltfile/worktree/ -run TestDiscover -count=1 -race → 9/9 PASS, command=go build ./... exit 0; vet/gofmt clean, note=Routing notes for tk-71n (Combine dedup) and tk-n6q (tiltignore root) attached",
+      "created_at": "2026-08-31T12:46:45.633Z"
+    }
+  ],
+  "comment_count": 2
+}

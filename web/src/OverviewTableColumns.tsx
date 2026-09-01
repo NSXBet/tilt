@@ -57,6 +57,7 @@ export type RowValues = {
   lastDeployTime: string
   trigger: OverviewTableBuildButtonStatus
   name: string
+  worktree: string
   resourceTypeLabel: string
   statusLine: OverviewTableResourceStatus
   podId: string
@@ -383,10 +384,29 @@ export function TableNameColumn({ row }: CellProps<RowValues>) {
       className={`${errorClass} ${disabledClass}`}
       onClick={(e) => nav.openResource(row.values.name)}
     >
-      {row.values.name}
+      {/* The name text is its own span so the worktree badge renders as a
+          sibling element, not part of the name's text content (plan §8). */}
+      <TableNameText>{row.values.name}</TableNameText>
+      {row.original.worktree !== "" && (
+        <TableWorktreeBadge>{row.original.worktree}</TableWorktreeBadge>
+      )}
     </Name>
   )
 }
+
+const TableNameText = styled.span`
+  display: inline-block;
+`
+
+const TableWorktreeBadge = styled.span`
+  display: inline-block;
+  margin-left: ${SizeUnit(0.25)};
+  padding: 0 ${SizeUnit(0.3)};
+  border-radius: ${SizeUnit(0.5)};
+  background-color: ${Color.gray40};
+  color: ${Color.offWhite};
+  font-size: ${FontSize.small};
+`
 
 let TableStatusColumnRoot = styled.div`
   display: flex;

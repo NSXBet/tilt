@@ -54,6 +54,7 @@ import (
 	tfv1alpha1 "github.com/tilt-dev/tilt/internal/tiltfile/v1alpha1"
 	"github.com/tilt-dev/tilt/internal/tiltfile/version"
 	"github.com/tilt-dev/tilt/internal/tiltfile/watch"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	fwatch "github.com/tilt-dev/tilt/internal/watch"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/logger"
@@ -203,15 +204,18 @@ func (s *tiltfileState) print(_ *starlark.Thread, msg string) {
 	s.logger.Infof("%s", msg)
 }
 
-// Load loads the Tiltfile in `filename`, and returns the manifests matching `matching`.
+// loadManifests loads the Tiltfile and returns the manifests it defines.
 //
-// This often returns a starkit.Model even on error, because the starkit.Model
-// has a record of what happened during the execution (what files were read, etc).
-//
-// TODO(nick): Eventually this will just return a starkit.Model, which will contain
-// all the mutable state collected by execution.
+// This often returns a starkit.Model even on error, because the model records
+// what happened during execution.
 func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, starkit.Model, error) {
 	s.logger.Infof("Loading Tiltfile at: %s", tf.Spec.Path)
+
+	worktreeName := tf.Labels[worktree.LabelWorktree]
+	worktreeDir := ""
+	if worktreeName != "" {
+		worktreeDir = worktree.DirOf(tf.Spec.Path, worktreeName)
+	}
 
 	result, err := starkit.ExecFile(tf,
 		s,
@@ -241,6 +245,7 @@ func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, 
 		probe.NewPlugin(),
 		tfv1alpha1.NewPlugin(),
 		hasher.NewPlugin(),
+		worktree.NewPlugin(worktree.WithWorktree(worktreeName, worktreeDir)),
 	)
 	if err != nil {
 		return nil, result, starkit.UnpackBacktrace(err)

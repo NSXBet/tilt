@@ -46,3 +46,35 @@ func MainTiltfile(filename string, args []string) *v1alpha1.Tiltfile {
 		},
 	}
 }
+
+// WorktreeTiltfile builds the Tiltfile CR for one worktree run (plan §2/§3):
+// it re-executes the SAME root Tiltfile (Spec.Path = the root path), and the
+// tilt.dev/worktree label tells the loader to inject the worktree context
+// and re-root path resolution at the worktree checkout. The engine-internal
+// name is "tiltfile:<worktree>"; the FileWatch and stop button follow it, so
+// each worktree run reloads and stops independently of the main run.
+func WorktreeTiltfile(worktree, rootTiltfilePath string, args []string) *v1alpha1.Tiltfile {
+	name := TiltfileName(worktree)
+	fwName := apis.SanitizeName(fmt.Sprintf("%s:%s", model.TargetTypeConfigs, name))
+	return &v1alpha1.Tiltfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: map[string]string{v1alpha1.LabelWorktree: worktree},
+		},
+		Spec: v1alpha1.TiltfileSpec{
+			Path: ResolveFilename(rootTiltfilePath),
+			Args: args,
+			RestartOn: &v1alpha1.RestartOnSpec{
+				FileWatches: []string{fwName},
+			},
+			StopOn: &v1alpha1.StopOnSpec{
+				UIButtons: []string{uibutton.StopBuildButtonName(name)},
+			},
+		},
+	}
+}
+
+// TiltfileName is the CR name for a worktree's Tiltfile: "tiltfile:<worktree>".
+func TiltfileName(worktree string) string {
+	return fmt.Sprintf("tiltfile:%s", worktree)
+}

@@ -7,6 +7,25 @@ import type { ObjectMeta } from "./types"
 export const UNLABELED_LABEL = "unlabeled"
 export const TILTFILE_LABEL = "Tiltfile"
 
+// The engine stamps every manifest from a worktree run with this label
+// (plan §4.3). It is a prefixed label, so getResourceLabels ignores it:
+// worktree grouping reads it separately via resourceWorktree.
+export const WORKTREE_LABEL_KEY = "tilt.dev/worktree"
+export const WORKTREE_GROUP_PREFIX = "worktrees: "
+
+// The worktree a resource belongs to, or "" for main-run resources.
+export function getResourceWorktree(resource: UIResource): string {
+  const { labels: labelsMap } = asUILabels({
+    labels: resource.metadata?.labels,
+  })
+  return labelsMap?.[WORKTREE_LABEL_KEY] ?? ""
+}
+
+// Group heading shown for each worktree section (table + sidebar).
+export function worktreeGroupLabel(worktree: string): string {
+  return `${WORKTREE_GROUP_PREFIX}${worktree}`
+}
+
 export type GroupByLabelView<T> = {
   labels: string[]
   labelsToResources: { [key: string]: T[] }

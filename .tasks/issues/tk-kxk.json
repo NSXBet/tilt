@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-kxk",
+  "title": "Clone Services + sibling DNS rewrite|For each Service selecting a stamped workload: clone Service with same name suffix + mutated selector -> cluster DNS <svc>-wt-<name> reaches only worktree pods. Env/arg rewrite in clone entities: sibling refs resolve to clone names for worktree-flagged resources, stay bare for shared. No mesh required. Tests: selector uniqueness, env rewrite.",
+  "description": "",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:27:59.001Z",
+  "updated_at": "2026-08-30T12:52:07.540Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [
+    {
+      "issue_id": "tk-kxk",
+      "depends_on_id": "tk-jxb",
+      "type": "blocks",
+      "created_at": "2026-08-29T22:28:09.536Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 1,
+  "dependent_count": 1,
+  "comments": [],
+  "comment_count": 0
+}

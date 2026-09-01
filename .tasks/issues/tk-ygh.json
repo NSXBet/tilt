@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-ygh",
+  "title": "Epic: multi-worktree parallel development in tilt",
+  "description": "",
+  "status": "open",
+  "priority": 1,
+  "issue_type": "epic",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:26:25.094Z",
+  "updated_at": "2026-08-29T22:30:44.118Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": null,
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "Reference Tiltfile: ~/Workdir/Nsx/incidents-admin/Tiltfile (shared postgres+helm foundation, worktree clones incidents-admin only; sha-pinned admin-bff-image inherited, not re-pulled). Full decision log in plan sections 3-6, 12.",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-7bb0a995-6869-4536-96ea-fef2b328270d",
+      "issue_id": "tk-ygh",
+      "author": "yuri",
+      "text": "Plan: .agents/drafts/multi-worktree-parallel.md — model: one engine, position-based discovery, worktree.name() injection, apply/build interception (clone contract, no namespaces/no mesh), *.tilt.localhost gateway, port registry. Phases: 1 tiltfile layer -> 2 interception -> 3 ports+gateway -> 4 UI/lifecycle/docs. Reference Tiltfile: ~/Workdir/Nsx/incidents-admin.",
+      "created_at": "2026-08-29T22:30:44.118Z"
+    }
+  ],
+  "comment_count": 1
+}

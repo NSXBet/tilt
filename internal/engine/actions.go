@@ -8,6 +8,7 @@ import (
 
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/internal/store"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/internal/token"
 	"github.com/tilt-dev/tilt/pkg/model"
 	"github.com/tilt-dev/wmclient/pkg/analytics"
@@ -29,6 +30,10 @@ type InitAction struct {
 	CloudAddress string
 	Token        token.Token
 	TerminalMode store.TerminalMode
+
+	// Discovered worktrees for multi-worktree parallel development
+	// (plan §2). Empty for classic single-Tiltfile behavior.
+	Worktrees []worktree.Worktree
 }
 
 func (InitAction) Action() {}

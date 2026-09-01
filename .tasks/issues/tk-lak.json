@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-lak",
+  "title": "Design spike: re-execution context plumbing|Small investigation before phase 1: confirm cleanest injection path for worktree name + cwd into Tiltfile execution — UserConfigState/args (upper.go:277) vs starkit thread locals vs Tiltfile CR spec field. Deliverable: short decision note appended to the plan. Read-only; touches nothing else.",
+  "description": "",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:29:50.973Z",
+  "updated_at": "2026-08-30T11:58:31.607Z",
+  "started_at": null,
+  "closed_at": "2026-08-30T11:58:31.607Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "referee tk-lak:referee:4 passed: citations=starkit/path.go:11-24 verified: thread-local execingTiltfileKey mechanism holds — AbsPath/AbsWorkingDir/CurrentExecPath via t.Local, git=git diff --numstat d4fa0523c: 87+/0-, single file .agents/drafts/multi-worktree-parallel.md, purely additive, concern=ruling cites 'starkit/path.go' without internal/tiltfile/ prefix — abbreviation only, content matches real path; non-blocking, gates=markdown-only fixture: no build/lint/test gate applicable; no web surface, VAR exempt",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [
+    {
+      "issue_id": "tk-lak",
+      "depends_on_id": "tk-sa1",
+      "type": "blocks",
+      "created_at": "2026-08-29T22:30:08.728Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 1,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-e754d49b-7efc-40c1-bc4a-8d86e14c1903",
+      "issue_id": "tk-lak",
+      "author": "yuri",
+      "text": "referee tk-lak:referee:4 passed: citations=starkit/path.go:11-24 verified: thread-local execingTiltfileKey mechanism holds — AbsPath/AbsWorkingDir/CurrentExecPath via t.Local, git=git diff --numstat d4fa0523c: 87+/0-, single file .agents/drafts/multi-worktree-parallel.md, purely additive, concern=ruling cites 'starkit/path.go' without internal/tiltfile/ prefix — abbreviation only, content matches real path; non-blocking, gates=markdown-only fixture: no build/lint/test gate applicable; no web surface, VAR exempt",
+      "created_at": "2026-08-30T11:58:31.599Z"
+    }
+  ],
+  "comment_count": 1
+}

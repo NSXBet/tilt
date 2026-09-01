@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-ucj",
+  "title": "internal/portregistry package|New pkg: Allocate(owner, requested) honoring worktree_config port_range; OS :0 fallback; stable across Tiltfile reloads (ports do not churn on save). Single-process registry — getAvailablePort TOCTOU race (internal/k8s/portforward.go:221) not our concern for own allocations. Unit tests: allocation, requested honored, reload stability, range exhaustion error.",
+  "description": "",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:28:27.982Z",
+  "updated_at": "2026-08-31T12:47:16.774Z",
+  "started_at": null,
+  "closed_at": "2026-08-31T12:47:16.774Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "referee tk-ucj:referee:1 passed: file=internal/portregistry/{portregistry.go, doc.go, tests} (3 new files), test=TestAllocateOutOfRangeRequestedNotHonored, TestAllocateOSFallback, TestAllocateStableAcrossReload all pass, note=2 env FAILs (kustomize) + 1 goimports issue in shared tree are out of scope",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 1,
+  "comments": [
+    {
+      "id": "comment-0c807d8b-ff90-4249-a999-9d041af70859",
+      "issue_id": "tk-ucj",
+      "author": "yuri",
+      "text": "referee tk-ucj:referee:1 passed: file=internal/portregistry/{portregistry.go, doc.go, tests} (3 new files), test=TestAllocateOutOfRangeRequestedNotHonored, TestAllocateOSFallback, TestAllocateStableAcrossReload all pass, note=2 env FAILs (kustomize) + 1 goimports issue in shared tree are out of scope",
+      "created_at": "2026-08-31T12:47:16.763Z"
+    }
+  ],
+  "comment_count": 1
+}

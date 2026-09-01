@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"regexp"
+	"strings"
 
 	"github.com/distribution/reference"
 	"github.com/pkg/errors"
@@ -14,10 +16,6 @@ import (
 // RefSet describes the references for a given image:
 //  1. ConfigurationRef: ref as specified in the Tiltfile
 //  2. LocalRef(): ref as used outside of the cluster (for Docker etc.)
-//  3. ClusterRef(): ref as used inside the cluster (in k8s YAML etc.). Often equivalent to
-//     LocalRef, but in some cases they diverge: e.g. when using a local registry with KIND,
-//     the image localhost:1234/my-image (localRef) is referenced in the YAML as
-//     http://registry/my-image (clusterRef).
 type RefSet struct {
 	// Ref as specified in Tiltfile; used to match a DockerBuild with
 	// corresponding k8s YAML. May contain tags, etc. (Also used as
@@ -26,6 +24,28 @@ type RefSet struct {
 
 	// (Optional) registry to prepend to ConfigurationRef to yield ref to use in update and deploy
 	registry *v1alpha1.RegistryHosting
+
+	// (Optional) worktree this run executes for. When set, AddTagSuffix appends
+	// a `-wt-<worktree>` token to the composed tag so builds from different
+	// worktrees never collide (or reuse each other's images). The token is
+	// escaped into a valid docker tag by WorktreeTagSuffix.
+	worktree string
+}
+
+// WithWorktree returns a copy of the RefSet bound to the given worktree, so
+// image tags derived from it carry a per-worktree token (see AddTagSuffix).
+func (rs RefSet) WithWorktree(name string) RefSet {
+	rs.worktree = name
+	return rs
+}
+
+// MustWithWorktree is like WithWorktree, panicking on an invalid name.
+func (rs RefSet) MustWithWorktree(name string) RefSet {
+	_, err := WorktreeTagSuffix(name)
+	if err != nil {
+		panic(err)
+	}
+	return rs.WithWorktree(name)
 }
 
 func NewRefSet(confRef RefSelector, reg *v1alpha1.RegistryHosting) (RefSet, error) {
@@ -65,7 +85,9 @@ func RefSetFromImageMap(spec v1alpha1.ImageMapSpec, cluster *v1alpha1.Cluster) (
 }
 
 func (rs RefSet) WithoutRegistry() RefSet {
-	return MustSimpleRefSet(rs.ConfigurationRef)
+	out := MustSimpleRefSet(rs.ConfigurationRef)
+	out.worktree = rs.worktree
+	return out
 }
 
 func (rs RefSet) Registry() *v1alpha1.RegistryHosting {
@@ -159,10 +181,22 @@ func (rs RefSet) ClusterRef() reference.Named {
 //
 // If we're in the mode where we're pushing to a single image name (for ECR), we'll
 // tag it with [escaped-original-name]-[suffix].
+//
+// When the RefSet carries worktree context (WithWorktree), a `-wt-<worktree>`
+// token is appended to the composed suffix, so builds from different worktrees
+// of the same image yield distinct tags (distinct ImageMaps, no cross-worktree
+// image reuse). The main run (no worktree context) is unchanged.
 func (rs RefSet) AddTagSuffix(suffix string) (TaggedRefs, error) {
 	tag := suffix
 	if rs.registry != nil && rs.registry.SingleName != "" {
 		tag = fmt.Sprintf("%s-%s", escapeName(path.Base(rs.ConfigurationRef.RefFamiliarName())), tag)
+	}
+	if rs.worktree != "" {
+		token, err := WorktreeTagSuffix(rs.worktree)
+		if err != nil {
+			return TaggedRefs{}, err
+		}
+		tag += token
 	}
 
 	localTagged, err := reference.WithTag(rs.LocalRef(), tag)
@@ -192,4 +226,38 @@ type TaggedRefs struct {
 	//
 	// TODO(milas): Rename to ContainerRuntimeRef
 	ClusterRef reference.NamedTagged
+}
+
+// worktreeTagToken is the tag-suffix token marking an image built for a
+// worktree run: `-wt-<escaped worktree name>`.
+const worktreeTagToken = "-wt-"
+
+// worktreeTagInvalidChars matches characters that can appear in a worktree
+// name (a directory basename) but are invalid in a docker tag
+// ([\w][\w.-]{0,127}). Anything matched is replaced with '_'.
+var worktreeTagInvalidChars = regexp.MustCompile(`[^\w.-]`)
+
+// WorktreeTagSuffix returns the tag suffix for a worktree run:
+// `-wt-<escaped name>`.
+//
+// Worktree names come from directory basenames and may contain characters
+// that are invalid in docker tags (spaces, '+', non-ASCII, leading dots...),
+// so the name is escaped before it is appended. The result is always a valid
+// tag fragment: the composite tag built from it round-trips through
+// reference.WithTag.
+func WorktreeTagSuffix(name string) (string, error) {
+	if name == "" {
+		return "", errors.New("worktree name is empty")
+	}
+	escaped := worktreeTagInvalidChars.ReplaceAllString(name, "_")
+	if escaped == "" {
+		return "", fmt.Errorf("worktree name %q escapes to an empty tag token", name)
+	}
+	// A tag must start with [\w]; a leading '.' or '-' in the name would
+	// surface here once the name escapes to e.g. "-tmp" or ".tmp".
+	escaped = strings.TrimLeft(escaped, "-.")
+	if escaped == "" {
+		return "", fmt.Errorf("worktree name %q escapes to an empty tag token", name)
+	}
+	return worktreeTagToken + escaped, nil
 }

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-sa1",
+  "title": "Commit plan draft to repo|.agents/drafts/multi-worktree-parallel.md is READY but uncommitted. Commit on a branch (or master as fork: prefixed commit) so it survives and is linkable from tk issues. Also consider syncing to .agents/drafts/ convention docs.",
+  "description": "",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:29:50.836Z",
+  "updated_at": "2026-08-30T10:45:13.962Z",
+  "started_at": null,
+  "closed_at": "2026-08-30T10:45:13.962Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "Committed to master as fork: commit; pushed to origin\nreferee tk-sa1:referee:1 passed: git=d4fa0523c exists, fork: prefix, single file .agents/drafts/multi-worktree-parallel.md +284/-0, 1 file changed, git=git fetch origin master; merge-base --is-ancestor d4fa0523c origin/master OK; origin/master == d4fa0523cd6ef... == local master, content=284 lines, 14 sections, full READY plan; 6 code citations spot-checked real (pkg/model/manifest.go:63, configs_controller.go:42, reconciler.go:365, cli.go, engine_state.go:73, config_def.go), concern=working tree has post-commit uncommitted §0 additions from parallel tk-lak session — outside commit scope, does not affect verdict, gates=docs-only diff: no Go code touched, vet/build/test not applicable; no markdown lint config; browser VAR N/A (no web surface)",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 1,
+  "comments": [
+    {
+      "id": "comment-b8bead1e-78b1-47e5-8eae-f9a6c10aed02",
+      "issue_id": "tk-sa1",
+      "author": "yuri",
+      "text": "referee tk-sa1:referee:1 passed: git=d4fa0523c exists, fork: prefix, single file .agents/drafts/multi-worktree-parallel.md +284/-0, 1 file changed, git=git fetch origin master; merge-base --is-ancestor d4fa0523c origin/master OK; origin/master == d4fa0523cd6ef... == local master, content=284 lines, 14 sections, full READY plan; 6 code citations spot-checked real (pkg/model/manifest.go:63, configs_controller.go:42, reconciler.go:365, cli.go, engine_state.go:73, config_def.go), concern=working tree has post-commit uncommitted §0 additions from parallel tk-lak session — outside commit scope, does not affect verdict, gates=docs-only diff: no Go code touched, vet/build/test not applicable; no markdown lint config; browser VAR N/A (no web surface)",
+      "created_at": "2026-08-30T10:45:13.954Z"
+    }
+  ],
+  "comment_count": 1
+}

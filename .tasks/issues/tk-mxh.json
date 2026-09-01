@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-mxh",
+  "title": "Phase 1: Tiltfile layer — worktree builtins, discovery, re-execution, engine-prefix rewrite",
+  "description": "",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-08-29T22:26:37.764Z",
+  "updated_at": "2026-08-30T12:12:45.711Z",
+  "started_at": null,
+  "closed_at": "2026-08-30T12:12:45.711Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [
+    "worktrees"
+  ],
+  "notes": "referee tk-mxh:referee:3 passed: test=go test ./internal/tiltfile/worktree/ -count=1 -> ok 1.022s (live re-run by referee), git=git diff --numstat d4fa0523c: exactly 91+/0-, single file .agents/drafts/multi-worktree-parallel.md, record=gate record md:106-108 complete and internally consistent: 15 acceptance tests, mutation-killed prefix test, contracts untouched, isolation, doc/code cross-checks",
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-28a037b9-e15c-4f96-a4de-7cff0f1e3aa6",
+      "issue_id": "tk-mxh",
+      "author": "yuri",
+      "text": "referee tk-mxh:referee:3 passed: test=go test ./internal/tiltfile/worktree/ -count=1 -> ok 1.022s (live re-run by referee), git=git diff --numstat d4fa0523c: exactly 91+/0-, single file .agents/drafts/multi-worktree-parallel.md, record=gate record md:106-108 complete and internally consistent: 15 acceptance tests, mutation-killed prefix test, contracts untouched, isolation, doc/code cross-checks",
+      "created_at": "2026-08-30T12:12:45.702Z"
+    }
+  ],
+  "comment_count": 1
+}

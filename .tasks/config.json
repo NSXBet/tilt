@@ -1,0 +1,6 @@
+{
+  "prefix": "tk",
+  "storage": {
+    "backend": "file"
+  }
+}

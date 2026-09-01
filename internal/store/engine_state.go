@@ -12,6 +12,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/dockercompose"
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/internal/store/k8sconv"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/internal/timecmp"
 	"github.com/tilt-dev/tilt/internal/token"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
@@ -94,6 +95,12 @@ type EngineState struct {
 	TelemetrySettings model.TelemetrySettings
 
 	UserConfigState model.UserConfigState
+
+	// Discovered worktrees (multi-worktree parallel development, plan §2):
+	// position-based scan of the worktree dir, seeded before the configs
+	// controller creates one Tiltfile CR per worktree. Empty for the classic
+	// single-Tiltfile behavior.
+	Worktrees []worktree.Worktree
 
 	// The initialization sequence is unfortunate. Currently we have:
 	// 1) Dispatch an InitAction
