@@ -348,6 +348,69 @@ func TestManifestTargetEndpoints(t *testing.T) {
 	}
 }
 
+// Worktree clone endpoint resolution (plan §6, tk-dbr): a worktree run's
+// endpoints come ONLY from its port-forwards (wired by the portforward
+// reconciler to the clone Service pods) — never from user links or LB URLs,
+// which would route the gateway back to the stable resource. Raw TCP
+// services (postgres) surface as plain localhost:<registry port> links.
+func TestManifestTargetEndpointsWorktreeIgnoresStableSources(t *testing.T) {
+	m := model.Manifest{Name: "wt:feat_auth_sancho"}.
+		WithLabels(map[string]string{"tilt.dev/worktree": "feat-auth"})
+	m = m.WithDeployTarget(model.K8sTarget{
+		KubernetesApplySpec: v1alpha1.KubernetesApplySpec{
+			Worktree: "feat-auth",
+			PortForwardTemplateSpec: &v1alpha1.PortForwardTemplateSpec{
+				Forwards: []v1alpha1.Forward{{LocalPort: 32771, ContainerPort: 3000}},
+			},
+		},
+	}.WithRefInjectCounts(map[string]int{}))
+
+	mt := newManifestTargetWithLoadBalancerURLs(m, []string{"http://stable-lb.zombo.com"})
+	actual := ManifestTargetEndpoints(mt)
+
+	require.Len(t, actual, 1, "worktree endpoints must come only from the clone port-forward, not user links or LB URLs")
+	require.Equal(t, "http://localhost:32771/", actual[0].URLString())
+}
+
+func TestManifestTargetEndpointsWorktreeRawTCPPortForward(t *testing.T) {
+	// Postgres shape: TCP service, no HTTP semantics — the endpoint is the
+	// plain localhost:<registry port> binding the registry allocated.
+	m := model.Manifest{Name: "wt:feat_auth_postgres"}.
+		WithLabels(map[string]string{"tilt.dev/worktree": "feat-auth"})
+	m = m.WithDeployTarget(model.K8sTarget{
+		KubernetesApplySpec: v1alpha1.KubernetesApplySpec{
+			Worktree: "feat-auth",
+			PortForwardTemplateSpec: &v1alpha1.PortForwardTemplateSpec{
+				Forwards: []v1alpha1.Forward{{LocalPort: 32772, ContainerPort: 5432, Name: "postgres"}},
+			},
+		},
+	}.WithRefInjectCounts(map[string]int{}))
+
+	mt := NewManifestTarget(m)
+	actual := ManifestTargetEndpoints(mt)
+
+	require.Len(t, actual, 1)
+	require.Equal(t, "http://localhost:32772/", actual[0].URLString())
+	require.Equal(t, "postgres", actual[0].Name)
+}
+
+func TestManifestTargetEndpointsMainUnchanged(t *testing.T) {
+	// Main run: user links still take precedence, LBs still shown — the
+	// worktree branch must not change main behavior.
+	m := model.Manifest{Name: "sancho"}
+	m = m.WithDeployTarget(model.K8sTarget{
+		KubernetesApplySpec: v1alpha1.KubernetesApplySpec{},
+		Links:               []model.Link{model.MustNewLink("http://stable.zombo.com", "")},
+	})
+
+	mt := newManifestTargetWithLoadBalancerURLs(m, []string{"http://stable-lb.zombo.com"})
+	actual := ManifestTargetEndpoints(mt)
+
+	require.Len(t, actual, 2)
+	require.Equal(t, "http://stable.zombo.com", actual[0].URLString())
+	require.Equal(t, "http://stable-lb.zombo.com", actual[1].URLString())
+}
+
 func newManifestTargetWithLoadBalancerURLs(m model.Manifest, urls []string) *ManifestTarget {
 	mt := NewManifestTarget(m)
 	if len(urls) == 0 {

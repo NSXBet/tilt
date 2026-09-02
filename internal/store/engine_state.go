@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/tilt-dev/wmclient/pkg/analytics"
@@ -913,6 +914,29 @@ var _ model.TargetStatus = &ManifestState{}
 func ManifestTargetEndpoints(mt *ManifestTarget) (endpoints []model.Link) {
 	if mt.Manifest.IsK8s() {
 		k8sTarg := mt.Manifest.K8sTarget()
+
+		// Worktree run (plan §6, tk-dbr): the gateway resolves a worktree's
+		// HTTP endpoint from its port-forwards — which the portforward
+		// reconciler wires to the clone Service pods — or, for raw TCP
+		// services like postgres with no HTTP port-forward, from the direct
+		// localhost:<registry port> binding. User-supplied links and LB URLs
+		// would route the gateway back to the STABLE resource, so they are
+		// never used as worktree endpoint sources.
+		if k8sTarg.Worktree != "" {
+			portForwardSpec := k8sTarg.PortForwardTemplateSpec
+			if portForwardSpec != nil {
+				for _, pf := range portForwardSpec.Forwards {
+					host := pf.Host
+					if host == "" {
+						host = "localhost"
+					}
+					endpoints = append(endpoints, model.MustNewLink(
+						fmt.Sprintf("http://%s:%d/%s", host, pf.LocalPort, strings.TrimPrefix(pf.Path, "/")), pf.Name))
+				}
+			}
+			return endpoints
+		}
+
 		endpoints = append(endpoints, k8sTarg.Links...)
 
 		// If the user specified port-forwards in the Tiltfile, we
