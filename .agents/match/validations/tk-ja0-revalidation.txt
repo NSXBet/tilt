@@ -1,0 +1,82 @@
+tk-ja0 revalidation evidence (post-recovery of orphaned commit 883b6e44b)
+Validator: ValidatorJa0, 2026-09-02
+Verdict basis: APPROVED (supersedes earlier REJECTED, which was caused by the
+commit being stranded off-branch; Coach recovered it via update-ref)
+
+## What was tested
+
+The COMMITTED tree of 883b6e44b ("fork: audit MainTiltfileManifestName
+special-cases for multi-worktree"), extracted via `git archive` to a clean
+temp dir (/tmp/tk-ja0-vtree) so the dirty worktree index could not
+contaminate results. Full vendor + web/ trees from the commit extracted;
+builds used -mod=vendor, private GOCACHE=$HOME/.cache/go-build-ja0,
+GOTMPDIR=$HOME/.cache/gotmp-ja0 (disk-pressure protocol: hard serialization,
+one go process system-wide, slot granted by Coach).
+
+## Results (real output)
+
+1. Targeted run of the five task-critical tests:
+
+   go test -run 'TestSetTiltfileArgs|TestExitControlCI_WorktreeTiltfileFailure|
+   TestStateToTerminalViewWorktreeTiltfileRows|TestSortUIResourcesWorktreeTiltfilePinned|
+   TestForbidK8sContextWorktreeRun' \
+   ./internal/store/tiltfiles ./internal/tiltfile/k8scontext
+   ./internal/controllers/core/session ./internal/hud ./internal/hud/webview
+
+   ok  github.com/tilt-dev/tilt/internal/store/tiltfiles      4.690s
+   ok  github.com/tilt-dev/tilt/internal/tiltfile/k8scontext  4.063s
+   ok  github.com/tilt-dev/tilt/internal/controllers/core/session 3.749s
+   ok  github.com/tilt-dev/tilt/internal/hud                  3.166s
+   ok  github.com/tilt-dev/tilt/internal/hud/webview          4.586s
+
+2. Full suite of all six touched packages:
+
+   go test -count=1 ./internal/store/tiltfiles ./internal/tiltfile/k8scontext
+   ./internal/controllers/core/session ./internal/hud ./internal/hud/webview
+   ./internal/controllers/core/tiltfile
+
+   ok  github.com/tilt-dev/tilt/internal/store/tiltfiles      3.097s
+   ok  github.com/tilt-dev/tilt/internal/tiltfile/k8scontext  3.379s
+   ok  github.com/tilt-dev/tilt/internal/controllers/core/session 1.130s
+   ok  github.com/tilt-dev/tilt/internal/hud                  2.787s
+   ok  github.com/tilt-dev/tilt/internal/hud/webview          3.485s
+   ok  github.com/tilt-dev/tilt/internal/controllers/core/tiltfile 6.304s
+
+3. Acceptance criterion "go build ./... green":
+
+   go build ./...   (on the full extracted commit tree incl. web/)
+   -> exit 0, no output (clean)
+
+## Acceptance criteria mapping (SPEC comment, plan section 7.7)
+
+1. "grep for MainTiltfileManifestName shows no unguarded single-Tiltfile
+   assumptions in engine/UI paths" — reviewed the full 584-line diff hunk by
+   hunk. Fixed: store/tiltfiles/args.go (args propagate to every
+   tiltfile:<wt> CR via tilt.dev/worktree label selector; cli/args.go routes
+   through SetTiltfileArgs), tiltfile/k8scontext.go IsAllowed (worktree
+   labeled runs satisfy the prod-context guard; only extensions exempt),
+   session/status.go + conv.go (targets cover every loaded Tiltfile run,
+   extensions excluded, per-run unique target names), hud/view.go
+   tiltfileResourceView (row name from Tiltfile state, rows iterate
+   GetTiltfileStates), hud/webview/convert.go sortUIResources (all
+   Tiltfile-run rows pinned via TiltfileDefinitionOrder).
+   Main-only-by-design sites documented in place: tiltfile/api.go
+   toSessionObjects/toClusterObjects, tiltfile/reconciler.go empty-Tiltfile
+   tutorial error, tiltfile/reducers.go global-settings gate,
+   store/tiltfiles/reducers.go UserConfigState gate.
+2. "tests cover one multi-Tiltfile state" — five new tests, all pass
+   (TestSetTiltfileArgs, TestExitControlCI_WorktreeTiltfileFailure,
+   TestStateToTerminalViewWorktreeTiltfileRows,
+   TestSortUIResourcesWorktreeTiltfilePinned,
+   TestForbidK8sContextWorktreeRun).
+3. "go build ./... green" — verified above.
+
+## Notes
+
+- Several earlier runs of this evidence collection died of ENOSPC (disk
+  emergency during 12-way concurrent validation). Those were environment
+  failures, not code failures; the final runs above are complete and clean.
+- internal/cli TestEdit hang mentioned in the commit message is pre-existing
+  at baseline ee0cfda53 (env-dependent, /proc absent on macOS) — not
+  exercised here; cli is out of this task's touched-package scope.
+- This evidence file supersedes tk-ja0-rejection.txt.
