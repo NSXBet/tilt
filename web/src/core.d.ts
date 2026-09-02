@@ -1646,6 +1646,19 @@ export interface KubernetesApplySpec {
    * +optional
    */
   serverSideApply?: boolean
+  /**
+   * Worktree names the git worktree this apply belongs to, when the
+   * resource is a worktree clone (multi-worktree development).
+   * When non-empty, the KubernetesApply controller stamps clones of the
+   * workloads in the YAML (name suffix "-wt-<worktree>", worktree label in
+   * the pod template and selector, tilt.dev/worktree annotation) so that
+   * worktree pods run additively alongside the stable objects. Services
+   * selecting a cloned workload get clone Services with the mutated
+   * selector. Shared objects (ConfigMaps, Secrets) pass through uncloned.
+   * When empty (the main run), the YAML is applied as-is.
+   * +optional
+   */
+  worktree?: string
 }
 /**
  * KubernetesApplyStatus defines the observed state of KubernetesApply
@@ -2884,6 +2897,20 @@ export const AnnotationManagedBy = "tilt.dev/managed-by"
  * AnnotationManifest identifies which manifest an object's logs should appear under.
  */
 export const AnnotationManifest = "tilt.dev/resource"
+/**
+ * LabelWorktree marks an object (a Tiltfile CR, a workload clone, a
+ * UIResource) as belonging to a git-worktree re-execution of the root
+ * Tiltfile (multi-worktree parallel development); its value is the worktree
+ * name. No label means the main run.
+ */
+export const LabelWorktree = "tilt.dev/worktree"
+/**
+ * AnnotationWorktree stamps a clone applied on behalf of a worktree run
+ * (plan §4.2): the clone name is suffixed and this annotation names the
+ * owning worktree, so the reconciler can prune clones whose worktree CR
+ * vanished.
+ */
+export const AnnotationWorktree = "tilt.dev/worktree"
 /**
  * An annotation on any object that identifies which span id
  * its logs should appear under.
