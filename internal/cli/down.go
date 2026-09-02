@@ -80,6 +80,7 @@ See https://docs.tilt.dev/tiltfile_config.html for examples.
 	addKubeContextFlag(cmd)
 	addNamespaceFlag(cmd)
 	cmd.Flags().BoolVar(&c.deleteNamespaces, "delete-namespaces", false, "delete namespaces defined in the Tiltfile (by default, don't)")
+	cmd.Flags().BoolVar(&c.deleteVolumes, "delete-volumes", false, "delete docker-compose volumes (by default, don't)")
 	cmd.Flags().BoolVar(&c.worktrees, "worktrees", true, "also tear down git worktrees discovered in the worktree dir (each worktree's Tiltfile is re-executed and its resources deleted)")
 	return cmd
 }
