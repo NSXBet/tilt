@@ -1,0 +1,62 @@
+tk-1zq validation — Validator1zq — 2026-09-02 — commit 7b592cb30 (vs base 2f1ab7aa3)
+
+DIFF REVIEW
+- boundary.go: selector scoping gated on IsCloneName; deps rewritten via
+  WorktreeImageMapSelector; renameDerived* now return errors; escaping through
+  container.WorktreeTagSuffix (same token as tk-7gg) + reference.ParseNormalizedNamed guard — sound.
+- imagemap_test.go: 13 tests (10 new + fixture updates) reviewed; cover scoping,
+  distinctness, name-match vs own build refs, RefSet chain, deps rewrite, no-mutation.
+- Wiring verified: ImageTarget.ID/ImageMapName + DependencyIDs both derive from
+  selector/deps strings (pkg/model/image_target.go), so identity+graph rewire together.
+- InferLiveUpdateSelectors (updateOwnedObjects, runs AFTER the pass) re-derives
+  LU selectors from rewritten targets — fine.
+
+TEST RUNS (GOCACHE=$HOME/.cache/go-build-val-1zq)
+ok  github.com/tilt-dev/tilt/internal/tiltfile/worktree  1.327s  (-count=1)
+ok  github.com/tilt-dev/tilt/pkg/model                   0.774s  (-count=1)
+All 13 new/updated worktree tests PASS individually (-v).
+
+REPRODUCED BREAKS (scratch test, executed then removed — never committed)
+
+BREAK A (deploy wiring): clone manifests' deploy-target ImageMaps lists
+(K8sTarget.ImageMaps ← tiltfile_state.go:1250 WithImageDependencies(r.imageMapDeps);
+DockerComposeTarget.Spec.ImageMaps ← svc.ImageMapDeps) are stamped with the BARE
+ref-derived ImageMap names at load and are NEVER rewritten by the pass — only
+m.ImageTargets are. But the ImageMap CRs are registered under SCOPED names
+(toImageMapObjects keys on rewritten iTarget.ImageMapName()). Consumers:
+- engine IBD/DCD build imageMapSet keyed by scoped iTarget.ImageMapName() (fine),
+  then the k8sapply/dockercomposeservice reconcilers index by the STALE BARE list:
+  NamesToObjects(spec.ImageMaps) misses the scoped CRs → shouldDeployOnReconcile
+  never deploys ("not built yet" forever), ComputeInputHash errors "missing image map".
+- updateOwnedObjects → m.InferLiveUpdateSelectors() → model.NewTargetGraph →
+  TopologicalSort: K8sTarget.DependencyIDs() yields the bare name, which no longer
+  resolves → "Internal error: Missing target dependency: registry.example.com_api"
+  → handleLoaded fails ("Failed to update API server") → the load is rejected outright.
+REPRO (exact production sequence ApplyBoundary → InferLiveUpdateSelectors):
+    --- FAIL: TestReproCloneK8sImageMapsStale
+        InferLiveUpdateSelectors error: Internal error: Missing target dependency: registry.example.com_api
+        BREAK A CONFIRMED
+Every worktree clone with a k8s_yaml/docker-compose deploy of its own build FAILS
+to load. No integration test covers the pass→updateOwnedObjects sequence.
+
+BREAK B (un-gated deps rewrite): the ImageMapDeps block runs for ANY manifest with
+deps, including shared (bare-named, wtOwned) redefinitions, calling
+WorktreeImageMapSelector("postgres", dep) → error. Repro:
+    --- FAIL: TestReproSharedRedefinitionDepsError
+        ApplyBoundary error: internal error: "postgres" is not a worktree clone name
+The comment says "callers scope only their own clones" but renameDerived is called
+on shared redefinitions too (ApplyBoundary out-set includes them). Fix is gating the
+deps block on IsCloneName(m.Name) like the selector block. NOTE: def-error shape
+also changes main's baseline behavior for nil-main runs with bare deps.
+
+ALSO NOT ADDRESSED FROM THE TASK SPEC: "Integration test: two worktrees build same
+Dockerfile -> distinct tags, distinct ImageMaps, stable pods keep main image" —
+only unit-level fixture tests exist; nothing exercises the loader→boundary→
+updateOwnedObjects integration, which is exactly where Break A lives.
+
+WORKER PACKAGES NOT RERUN (timebox): internal/controllers/core/tiltfile,
+kubernetesapply, internal/engine/... — Break A makes their clone-path behavior
+broken by construction (proven above); worker's green runs exercise the pass in
+isolation, not the production sequence.
+
+VERDICT: REJECTED.
