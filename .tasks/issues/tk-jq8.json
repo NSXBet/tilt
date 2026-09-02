@@ -4,14 +4,14 @@
   "id": "tk-jq8",
   "title": "Multi-Tiltfile CR creation",
   "description": "",
-  "status": "in_progress",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:19.983Z",
-  "updated_at": "2026-09-02T09:27:01.324Z",
+  "updated_at": "2026-09-02T14:36:15.967Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -52,7 +52,21 @@
       "author": "yuri",
       "text": "COACH: worker session torn down with no work produced; worktree clean at baseline. SPEC comment above is the brief. Retry.",
       "created_at": "2026-09-02T09:27:01.324Z"
+    },
+    {
+      "id": "comment-7345664a-d0d8-47c9-8fe4-98f9d6dfd8c9",
+      "issue_id": "tk-jq8",
+      "author": "yuri",
+      "text": "DONE: Multi-Tiltfile CR creation verified and accepted — the implementation was already committed on this branch's baseline ee0cfda53 (phase-1 WIP): ConfigsController.maybeCreateInitialTiltfile (internal/engine/configs/configs_controller.go) creates the main '(Tiltfile)' CR plus one 'tiltfile:<wt>' CR per discovered worktree (label tilt.dev/worktree, root Tiltfile path shared, per-worktree FileWatch + StopBuildButton), consuming EngineState.Worktrees seeded by the discovery driver; acceptance tests TestCreateTiltfile_Worktrees (two worktrees -> exactly 3 CRs, worktree label + root path asserted, main spec unchanged) and TestCreateTiltfile_NoWorktrees (classic single CR) pass. Verified: go test ./internal/engine/configs/... ./internal/controllers/core/tiltfile/ -count=1 — both packages ok (GOCACHE=/Users/yuri/.cache/go-build-1zq, private cache). No code changes needed; worktree left clean at baseline (only regenerable .tasks state, untouched).",
+      "created_at": "2026-09-02T14:26:41.393Z"
+    },
+    {
+      "id": "comment-c559ab0e-1f0d-4e46-9dcb-b6411e1e9b33",
+      "issue_id": "tk-jq8",
+      "author": "yuri",
+      "text": "APPROVED: Validated on merged master (c9a44c7ec; implementation is baseline ee0cfda53, unchanged since — diff of the 3 impl files baseline..HEAD is empty; no task worktree needed). Criterion -> evidence: (1) two worktrees -> exactly 3 CRs: TestCreateTiltfile_Worktrees asserts ElementsMatch([main, tiltfile:feature-a, tiltfile:feature-b], listTiltfileNames) — PASS; (2) label tilt.dev/worktree per worktree CR and none on main: worktreeLabelOf assertions — PASS; (3) shared root Tiltfile path: worktree CR Spec.Path == ResolveFilename(root) — PASS; (4) per-worktree FileWatch + stop button: WorktreeTiltfile wires RestartOn.FileWatches + StopOn.UIButtons per CR (source review); (5) zero worktrees -> classic single CR: TestCreateTiltfile_NoWorktrees — PASS. Commands: go test ./internal/engine/configs/... ./internal/controllers/core/tiltfile/ -count=1 (acceptance -run TestCreateTiltfile -v: 3/3 PASS; full: both pkgs ok), private GOCACHE ~/.cache/go-build-val-jq8. Evidence: .agents/match/validations/tk-jq8-evidence.txt (committed 2f1ab7aa3, chore:). No browser surface required (controller-level Go task per validation-context.md).",
+      "created_at": "2026-09-02T14:36:11.149Z"
     }
   ],
-  "comment_count": 3
+  "comment_count": 5
 }

@@ -4,28 +4,29 @@
   "id": "tk-ljk",
   "title": "docker-compose project suffix + registry ports|docker_compose_service worktree flag: project name suffix per worktree (default already dir-derived, docker_compose.go:135; explicit DockerComposeProject.Name override dockercomposeservice_types.go:215). Published ports deconflicted via port registry (phase 3). Test: two worktrees compose up simultaneously, distinct projects, no port clashes.",
   "description": "",
-  "status": "open",
+  "status": "closed",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:59.417Z",
-  "updated_at": "2026-08-30T12:52:07.645Z",
+  "updated_at": "2026-09-02T16:35:57.043Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-02T16:35:57.043Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
   "labels": [
     "worktrees"
   ],
-  "notes": null,
+  "notes": "merged to master; validator approved",
   "design": null,
   "acceptance_criteria": null,
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [
     {
@@ -39,6 +40,14 @@
   ],
   "dependency_count": 1,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-61676374-a194-4f2f-9aad-b5fb5e927126",
+      "issue_id": "tk-ljk",
+      "author": "yuri",
+      "text": "APPROVED: All acceptance criteria validated against commit 20521f999 in worktree .worktrees/tk-ljk.\n\nCriterion -> evidence:\n1. Project name suffix per worktree (dir-derived default): dockerCompose() rewrites project.Name to '<authored>-wt-<worktree>' via wtComposeProjectName when the thread carries a worktree context (starkit.WorktreeContextOf, stamped by worktree.Plugin.OnStart from the tilt.dev/worktree label). Evidence: TestDockerComposeProjectName_WorktreeRun/dir-derived_default PASS (feat-auth-wt-feat-auth) — .agents/match/validations/tk-ljk-tests.txt.\n2. Explicit DockerComposeProject.Name override: same gate covers explicit project_name=; TestDockerComposeProjectName_WorktreeRun/explicit_project_name PASS (hello-wt-feat-auth). Main runs keep authored names: TestDockerComposeProjectName_MainRunUnchanged PASS (hello, no suffix).\n3. dc_resource(project_name=) authored->engine translation: authoredDCProjectName re-applies the suffix before getDCService lookup; TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun PASS.\n4. Published ports deconflicted via port registry (phase 3): deconflictDCPorts gated to worktree runs; rebinds fixed numeric host bindings via portregistry.Allocate keyed wtPortOwner(dc:<engine-project>/<svc>:<target>/<proto>) (reload-stable, per-worktree distinct); rewritten config materialized as single temp YAML repointing ConfigPaths (runtime + reload diff); parsed services re-mutated so PublishedPorts/UI links match. compose-go appends ports across -f files (no override rule), so the tempfile rewrite (not an -f override) is the correct mechanism. Evidence: TestDockerComposeWorktreePortDeconflict (main keeps 12312; feat-auth and fix-bug rebind to range, runtime YAML carries rebinding and drops 12312) and TestDockerComposeTwoWorktreesNoPortClash PASS (distinct projects feat-auth-wt-feat-auth vs fix-bug-wt-fix-bug, distinct allocated ports, neither holds authored 12312).\n5. Reload stability: TestDockerComposeWorktreePortStableAcrossReloads PASS (same allocation across two Loads).\n6. port_range feed: tiltfileLoader.Load calls portregistry.SetPortRange(wtState.PortMin, wtState.PortMax); consumer parity with tk-zfi portforward wiring confirmed on master.\n\nTest runs (in worktree): worker's exact acceptance command green (7 tests incl. subtests); full ./internal/tiltfile/ + ./internal/tiltfile/starkit/ green except known-baseline TestKustomizeFlags/TestKustomizeBin (no kustomize binary on PATH — confirmed  empty; pre-declared ignore). go vet + gofmt clean on changed files. Evidence: .agents/match/validations/tk-ljk-tests.txt, .agents/match/validations/tk-ljk-diff-review.txt (committed 2bd4d478b).",
+      "created_at": "2026-09-02T16:20:17.987Z"
+    }
+  ],
+  "comment_count": 1
 }
