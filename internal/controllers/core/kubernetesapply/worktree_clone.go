@@ -5,7 +5,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/tilt-dev/tilt/internal/k8s"
@@ -250,14 +249,6 @@ func WorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity,
 		}
 	}
 
-	// Route clones (plan §4.2 step 4): one Ingress clone per Ingress whose
-	// Service backends point at a cloned Service, backends rewritten to the
-	// clone names — the tilt.localhost gateway then reaches only the
-	// worktree's pods.
-	suffix := worktreeCloneSuffix(worktree)
-	out = append(out, cloneIngresses(out, suffix, worktree,
-		clonedServiceNames(out, suffix, worktree))...)
-
 	// Sibling DNS rewrite (plan §4.2 step 3), on the fully stamped set so
 	// the clone-Service name set is complete before any refs resolve.
 	stamped := make([]k8s.K8sEntity, 0, len(entities)+len(clones))
@@ -268,39 +259,6 @@ func WorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity,
 	return clones, nil
 }
 
-// scrubServerFields strips the server-assigned fields a re-parsed apply
-// round-trip carries (uid, resourceVersion, creationTimestamp, generation)
-// so the entities can be upserted on the user's behalf — the API server
-// rejects them on create. Bookkeeping (managedFields, last-applied
-// annotation) is dropped by Clean.
-func scrubServerFields(entities []k8s.K8sEntity) {
-	for _, e := range entities {
-		e.Meta().SetUID("")
-		e.Meta().SetResourceVersion("")
-		e.Meta().SetCreationTimestamp(metav1.Time{})
-		e.Meta().SetGeneration(0)
-		e.Clean()
-	}
-}
-
-// clonedServiceNames returns the bare names of the Services cloned in this
-// stamped set: the refs the sibling DNS rewrite rewrites, and the names the
-// Ingress backend rewrite keys on.
-func clonedServiceNames(entities []k8s.K8sEntity, suffix, worktree string) map[string]bool {
-	cloned := map[string]bool{}
-	for _, e := range entities {
-		if _, ok := e.Obj.(*v1.Service); !ok {
-			continue
-		}
-		if e.Meta().GetAnnotations()[v1alpha1.AnnotationWorktree] != worktree {
-			continue
-		}
-		if bare, ok := strings.CutSuffix(e.Meta().GetName(), suffix); ok {
-			cloned[bare] = true
-		}
-	}
-	return cloned
-}
 
 // rewriteSiblingRefs applies the sibling DNS rewrite to the clone entities
 // (plan §4.2 step 3): "the worktree clone's env/args get one transparent
@@ -497,84 +455,4 @@ func WorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity,
 	}
 
 	return append(clones, svcClones...), nil
-}
-
-// cloneIngress returns a copy of the Ingress with every Service backend
-// that selects a stamped workload's pods rewritten to the clone Service
-// name, plus the suffixed name and worktree annotation (plan §4.2 step 4).
-// The stable Ingress passes through untouched. Resource backends (CRD-backed
-// backends, not Service-backed) keep their original ref: the referenced
-// object is not part of the clone contract.
-//
-// HTTPRoute / Gateway API route kinds are NOT supported here: this fork
-// vendors no gateway-api module (no sigs.k8s.io/gateway-api in go.mod), so
-// HTTPRoute entities arrive as unstructured objects and stay uncloned. The
-// tilt.localhost gateway (internal/hud/server/gateway.go) serves worktree
-// hosts without needing cloned routes.
-func cloneIngress(ing *networkingv1.Ingress, suffix string, worktree string, cloned map[string]bool) *networkingv1.Ingress {
-	clone := ing.DeepCopy()
-
-	rewriteBackend := func(b *networkingv1.IngressBackend) {
-		if b.Service != nil && cloned[b.Service.Name] {
-			b.Service.Name += suffix
-		}
-	}
-	if clone.Spec.DefaultBackend != nil {
-		rewriteBackend(clone.Spec.DefaultBackend)
-	}
-	for i := range clone.Spec.Rules {
-		if clone.Spec.Rules[i].HTTP == nil {
-			continue
-		}
-		for j := range clone.Spec.Rules[i].HTTP.Paths {
-			rewriteBackend(&clone.Spec.Rules[i].HTTP.Paths[j].Backend)
-		}
-	}
-	clone.Status = networkingv1.IngressStatus{}
-
-	meta := clone.ObjectMeta
-	meta.SetName(meta.GetName() + suffix)
-	annotations := meta.GetAnnotations()
-	if annotations == nil {
-		annotations = map[string]string{}
-	}
-	annotations[v1alpha1.AnnotationWorktree] = worktree
-	meta.SetAnnotations(annotations)
-	clone.ObjectMeta = meta
-
-	k8s.NewK8sEntity(clone).Clean()
-
-	return clone
-}
-
-// cloneIngresses appends one Ingress clone per Ingress in the set whose
-// backends point at a cloned Service. Ingresses with no Service-backed
-// backends (or only shared ones) are not cloned: they would serve the
-// stable's routing under the worktree's name.
-func cloneIngresses(entities []k8s.K8sEntity, suffix string, worktree string, cloned map[string]bool) []k8s.K8sEntity {
-	var out []k8s.K8sEntity
-	for _, e := range entities {
-		ing, ok := e.Obj.(*networkingv1.Ingress)
-		if !ok || ing == nil {
-			continue
-		}
-		used := false
-		check := func(b *networkingv1.IngressBackend) {
-			if b != nil && b.Service != nil && cloned[b.Service.Name] {
-				used = true
-			}
-		}
-		check(ing.Spec.DefaultBackend)
-		for i := range ing.Spec.Rules {
-			if ing.Spec.Rules[i].HTTP != nil {
-				for j := range ing.Spec.Rules[i].HTTP.Paths {
-					check(&ing.Spec.Rules[i].HTTP.Paths[j].Backend)
-				}
-			}
-		}
-		if used {
-			out = append(out, k8s.NewK8sEntity(cloneIngress(ing, suffix, worktree, cloned)))
-		}
-	}
-	return out
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -444,131 +443,6 @@ spec:
 	assert.Equal(t,
 		[]string{"--cache-host", "cache-wt-feat-auth", "--db-host", "postgres"},
 		apiClone.Spec.Template.Spec.Containers[0].Args)
-}
-
-// Ingress route clones (plan §4.2 step 4): an Ingress whose backend points
-// at a cloned Service gets a clone with suffixed name, tilt.dev/worktree
-// annotation, and the backend rewritten to the clone Service. The stable
-// Ingress passes through unmutated. Ingresses with no cloned backends are
-// never cloned.
-func TestWorktreeIngressClone(t *testing.T) {
-	yaml := `
-apiVersion: v1
-kind: Service
-metadata:
-  name: cache
-spec:
-  selector:
-    app: cache
-  ports:
-  - port: 6379
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cache
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: cache
-  template:
-    metadata:
-      labels:
-        app: cache
-    spec:
-      containers:
-      - name: cache
-        image: redis
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-spec:
-  selector:
-    app: postgres
-  ports:
-  - port: 5432
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cache-ing
-spec:
-  rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: cache
-            port:
-              number: 6379
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: db-ing
-spec:
-  rules:
-  - http:
-      paths:
-      - path: /db
-        pathType: Prefix
-        backend:
-          service:
-            name: postgres
-            port:
-              number: 5432
-`
-	f := newFixture(t)
-	ka := v1alpha1.KubernetesApply{
-		ObjectMeta: metav1.ObjectMeta{Name: "a"},
-		Spec: v1alpha1.KubernetesApplySpec{
-			YAML:     yaml,
-			Worktree: "feat-auth",
-		},
-	}
-	f.Create(&ka)
-	f.MustReconcile(types.NamespacedName{Name: "a"})
-
-	var ingresses []*networkingv1.Ingress
-	parsed, err := k8s.ParseYAMLFromString(f.kClient.Yaml)
-	require.NoError(t, err)
-	for _, e := range parsed {
-		if ing, ok := e.Obj.(*networkingv1.Ingress); ok {
-			ingresses = append(ingresses, ing)
-		}
-	}
-	byName := map[string]*networkingv1.Ingress{}
-	for _, ing := range ingresses {
-		byName[ing.Name] = ing
-	}
-	assert.Len(t, ingresses, 3, "stable pair + one clone (only the Ingress with a cloned backend)")
-
-	clone, ok := byName["cache-ing-wt-feat-auth"]
-	require.True(t, ok, "missing Ingress clone")
-	assert.Equal(t, "feat-auth", clone.Annotations["tilt.dev/worktree"],
-		"Ingress clone must carry the worktree annotation")
-	backend := clone.Spec.Rules[0].HTTP.Paths[0].Backend
-	require.NotNil(t, backend.Service)
-	assert.Equal(t, "cache-wt-feat-auth", backend.Service.Name,
-		"clone backend must point at the clone Service")
-
-	stable, ok := byName["cache-ing"]
-	require.True(t, ok, "stable cache-ing must still be applied")
-	_, hasAnn := stable.Annotations["tilt.dev/worktree"]
-	assert.False(t, hasAnn, "stable Ingress must not be annotated")
-	assert.Equal(t, "cache", stable.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name,
-		"stable Ingress backend must be untouched")
-
-	dbIngress, ok := byName["db-ing"]
-	require.True(t, ok, "shared-backend Ingress must still be applied")
-	_, hasAnn = dbIngress.Annotations["tilt.dev/worktree"]
-	assert.False(t, hasAnn, "Ingress with no cloned backend must not be cloned")
-	assert.Equal(t, "postgres", dbIngress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
 }
 
 // Stable entities never reference clone names: the rewrite must not touch
