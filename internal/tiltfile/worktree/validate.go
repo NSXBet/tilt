@@ -2,7 +2,6 @@ package worktree
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/tilt-dev/tilt/pkg/model"
 )
@@ -167,5 +166,5 @@ func Combine(main []model.Manifest, runs []RunResult) ([]model.Manifest, error) 
 // isCloneName reports whether name carries the worktree clone prefix
 // (`wt:<worktree>/<name>`, prefix.go).
 func isCloneName(name model.ManifestName) bool {
-	return strings.HasPrefix(string(name), namePrefix)
+	return IsCloneName(name)
 }

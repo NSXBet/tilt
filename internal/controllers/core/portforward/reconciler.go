@@ -145,7 +145,7 @@ func (r *Reconciler) reconcile(ctx context.Context, name types.NamespacedName) e
 	return r.maybeUpdateStatus(ctx, pf, r.activeForwards[name])
 }
 
-func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntry, index int, forward Forward) {
+func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntry, forwardIndex int, forward Forward) {
 	originalBackoff := wait.Backoff{
 		Steps:    1000,
 		Duration: 50 * time.Millisecond,
@@ -157,7 +157,7 @@ func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntr
 
 	for {
 		start := time.Now()
-		r.onePortForward(ctx, entry, index, forward)
+		r.onePortForward(ctx, entry, forwardIndex, forward)
 		if ctx.Err() != nil {
 			// If the context was canceled, there's nothing more to do;
 			// we cannot even update the status because we no longer have
@@ -165,7 +165,6 @@ func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntr
 			// PortForward is being deleted.
 			return
 		}
-
 		// If this failed in less than a second, then we should advance the backoff.
 		// Otherwise, reset the backoff.
 		if time.Since(start) < time.Second {
@@ -188,7 +187,17 @@ func (r *Reconciler) maybeUpdateStatus(ctx context.Context, pf *v1alpha1.PortFor
 	return client.IgnoreNotFound(r.ctrlClient.Status().Update(ctx, update))
 }
 
-func (r *Reconciler) onePortForward(ctx context.Context, entry *portForwardEntry, index int, forward Forward) {
+// portRegistryOwner is the portregistry allocation key for one forward:
+// the PortForward object's manifest name (worktree-prefixed
+// `wt:<worktree>/<name>` for worktree runs, plan §4.3) plus the forward's
+// position in the spec, so two forwards of one resource never share a
+// reservation while a forward keeps its port across reloads even when its
+// container port changes (registry_test.go TestRegistryPortStableAcrossReload).
+func portRegistryOwner(entry *portForwardEntry, forwardIndex int) string {
+	return fmt.Sprintf("%s#%d", entry.meta.Annotations[v1alpha1.AnnotationManifest], forwardIndex)
+}
+
+func (r *Reconciler) onePortForward(ctx context.Context, entry *portForwardEntry, forwardIndex int, forward Forward) {
 	logError := func(err error) {
 		logger.Get(ctx).Infof("Reconnecting... Error port-forwarding %s (%d -> %d): %v",
 			entry.meta.Annotations[v1alpha1.AnnotationManifest],
@@ -198,13 +207,11 @@ func (r *Reconciler) onePortForward(ctx context.Context, entry *portForwardEntry
 	localPort := int(forward.LocalPort)
 	if localPort == 0 {
 		// The worktree port registry hands out stable ports across Tiltfile
-		// reloads (owner = PortForward object + forward index, so a spec
-		// change that recreates the forward keeps its port). With no range
-		// configured it falls back to the OS, matching getAvailablePort.
-		// Allocation failure surfaces as a forward error, like any other
-		// CreatePortForwarder failure.
-		port, err := portregistry.Allocate(
-			fmt.Sprintf("%s/%s#%d", entry.name.Namespace, entry.name.Name, index), 0)
+		// reloads (owner = manifest name + forward index, so a spec change
+		// that recreates the forward keeps its port). With no range configured
+		// it falls back to the OS, matching getAvailablePort. Allocation
+		// failure surfaces as a forward error, like CreatePortForwarder.
+		port, err := portregistry.Allocate(portRegistryOwner(entry, forwardIndex), 0)
 		if err != nil {
 			logError(err)
 			entry.setStatus(forward, ForwardStatus{

@@ -18,6 +18,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/internal/localexec"
 	"github.com/tilt-dev/tilt/internal/ospath"
+	"github.com/tilt-dev/tilt/internal/portregistry"
 	"github.com/tilt-dev/tilt/internal/sliceutils"
 	tiltfileanalytics "github.com/tilt-dev/tilt/internal/tiltfile/analytics"
 	"github.com/tilt-dev/tilt/internal/tiltfile/cisettings"
@@ -249,6 +250,11 @@ func (tfl tiltfileLoader) Load(ctx context.Context, tf *corev1alpha1.Tiltfile, p
 
 	wtState, _ := worktree.GetState(result)
 	tlr.WorktreeConfig = wtState
+
+	// worktree_config() port_range feeds the in-process port registry
+	// (plan §5, tk-zfi): (0, 0) leaves OS-fallback mode. Range applies to
+	// subsequent allocations only; existing reservations never churn.
+	portregistry.SetPortRange(wtState.PortMin, wtState.PortMax)
 
 	configSettings, _ := config.GetState(result)
 	if tlr.Error == nil {

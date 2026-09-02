@@ -153,6 +153,12 @@ type tiltfileState struct {
 	// Temporary directory for storing generated artifacts during the lifetime of the tiltfile context.
 	// The directory is recursively deleted when the context is done.
 	scratchDir *fwatch.TempDir
+
+	// The worktree this run executes for ("" for the main run), from the
+	// Tiltfile CR's tilt.dev/worktree label (plan §3). Stamped onto every
+	// K8s apply spec so the apply-interception stage can clone entities for
+	// this worktree; and onto DC targets when composed.
+	worktree string
 }
 
 func newTiltfileState(
@@ -210,11 +216,11 @@ func (s *tiltfileState) print(_ *starlark.Thread, msg string) {
 // what happened during execution.
 func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, starkit.Model, error) {
 	s.logger.Infof("Loading Tiltfile at: %s", tf.Spec.Path)
-
 	worktreeName := tf.Labels[worktree.LabelWorktree]
 	worktreeDir := ""
 	if worktreeName != "" {
 		worktreeDir = worktree.DirOf(tf.Spec.Path, worktreeName)
+		s.worktree = worktreeName
 	}
 
 	result, err := starkit.ExecFile(tf,
@@ -1202,6 +1208,7 @@ func (s *tiltfileState) k8sDeployTarget(targetName model.TargetName, r *k8sResou
 				string(container.LinkerdInitContainerName),
 			},
 		},
+		Worktree: s.worktree,
 	}
 
 	if updateSettings.K8sServerSideApply() == "true" {

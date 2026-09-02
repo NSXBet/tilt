@@ -1,6 +1,8 @@
 package worktree
 
 import (
+	"strings"
+
 	"github.com/tilt-dev/tilt/pkg/model"
 )
 
@@ -89,6 +91,15 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 // prefix preserves every name-keyed subsystem).
 func ManifestName(worktree, name string) model.ManifestName {
 	return model.ManifestName(namePrefix + worktree + "_" + name)
+}
+
+// IsCloneName reports whether name carries the worktree clone prefix
+// (`wt:<worktree>/<name>`). Exported for the engine boundary: the loader
+// stamps worktree-run manifests' specs with the worktree name (e.g.
+// KubernetesApplySpec.Worktree) and the configs reconciler labels
+// engine-side objects, keyed off this prefix.
+func IsCloneName(name model.ManifestName) bool {
+	return strings.HasPrefix(string(name), namePrefix)
 }
 
 func containsName(names []model.ManifestName, name model.ManifestName) bool {

@@ -23,6 +23,30 @@ import (
 
 // requireAllocatedPort waits until the named PortForward reports a started
 // forward whose LocalPort was allocated from [lo, hi], and returns it.
+// requireAllocatedPorts is the n-forward variant.
+func requireAllocatedPorts(t *testing.T, f *pfrFixture, name string, lo, hi, n int) []int32 {
+	t.Helper()
+	ports := make([]int32, 0, n)
+	require.Eventuallyf(t, func() bool {
+		var pf PortForward
+		if !f.Get(types.NamespacedName{Name: name}, &pf) {
+			return false
+		}
+		ports = ports[:0]
+		for _, s := range pf.Status.ForwardStatuses {
+			if s.Error != "" || s.StartedAt.IsZero() {
+				continue
+			}
+			if int(s.LocalPort) >= lo && int(s.LocalPort) <= hi {
+				ports = append(ports, s.LocalPort)
+			}
+		}
+		return len(ports) == n
+	}, 2*time.Second, 20*time.Millisecond,
+		"PortForward %q never reported %d started forwards with LocalPort in [%d,%d]", name, n, lo, hi)
+	return ports
+}
+
 func requireAllocatedPort(t *testing.T, f *pfrFixture, name string, lo, hi int) int32 {
 	t.Helper()
 	var got int32

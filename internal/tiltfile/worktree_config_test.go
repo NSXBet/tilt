@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	ctrltiltfile "github.com/tilt-dev/tilt/internal/controllers/apis/tiltfile"
+	"github.com/tilt-dev/tilt/internal/k8s/testyaml"
 )
 
 // Acceptance (plan §3, §7.1): worktree_config() parsed by the plugin
@@ -68,4 +71,39 @@ local_resource("x", "true")
 	// worktree_config() still applies on the re-executed root Tiltfile.
 	assert.Equal(t, "local-wts", f.loadResult.WorktreeConfig.Dir)
 	assert.True(t, f.loadResult.WorktreeConfig.Gateway)
+}
+
+// The loader produces the apply-interception input (plan §4.1, tk-mzx):
+// a worktree run stamps the worktree name onto every K8s target's
+// KubernetesApplySpec.Worktree, so the KubernetesApply controller's
+// clone-stamping stage (stampWorktreeClones) fires for this run's
+// resources. The main run leaves it empty (Worktree == "" is a no-op).
+func TestWorktreeConfig_K8sApplySpecStampedWithWorktree(t *testing.T) {
+	f := newFixture(t)
+	f.file("Tiltfile", `
+k8s_yaml('sancho.yaml')
+`)
+	f.file("sancho.yaml", testyaml.SanchoYAML)
+	// Path re-rooting (plan §0 amendment) makes the worktree run resolve
+	// sancho.yaml inside its checkout; place it there.
+	f.file(".worktree/feat-auth/sancho.yaml", testyaml.SanchoYAML)
+
+	tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)
+	tf.Labels = map[string]string{"tilt.dev/worktree": "feat-auth"}
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+
+	require.Len(t, tlr.Manifests, 1)
+	assert.Equal(t, "feat-auth", tlr.Manifests[0].K8sTarget().KubernetesApplySpec.Worktree,
+		"worktree run manifests must carry the worktree on their apply spec")
+
+	// Main run: no stamping — classic behavior preserved.
+	f2 := newFixture(t)
+	f2.file("Tiltfile", `
+k8s_yaml('sancho.yaml')
+`)
+	f2.file("sancho.yaml", testyaml.SanchoYAML)
+	f2.load()
+	assert.Equal(t, "", f2.loadResult.Manifests[0].K8sTarget().KubernetesApplySpec.Worktree,
+		"main run apply specs must stay unstamped")
 }
