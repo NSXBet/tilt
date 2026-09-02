@@ -203,6 +203,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		}
 	}
 
+	// Held worktree runs (step runStepDone, TLR parked in the run record)
+	// replay through the same handleLoaded path once the main run has
+	// settled: re-enter with the parked result, no re-evaluation of the
+	// Tiltfile loader.
+	if step == runStepDone && r.heldWorktrees[nn] && r.mainSettled(ctx) {
+		delete(r.heldWorktrees, nn)
+		err := r.handleLoaded(ctx, nn, &tf, run.entry, run.tlr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	run = r.runs[nn]
 	if run != nil {
 		newStatus := run.TiltfileStatus()
@@ -396,7 +408,16 @@ func (r *Reconciler) handleLoaded(
 		// The main run hasn't completed a load yet: park this run and let
 		// the main run's completion kick it (mainLoadCompleted). Only the
 		// main run's own result is authoritative for shared-name resolution.
+		//
+		// The parked run still reports Terminated (empty result, no error):
+		// step stays runStepLoaded so the TLR is replayed when the hold
+		// releases, but the CR lifecycle — and anything waiting on
+		// Status.Terminated — sees the run finished its turn.
 		r.heldWorktrees[nn] = true
+		if run, ok := r.runs[nn]; ok {
+			run.step = runStepDone
+			run.finishTime = time.Now()
+		}
 		logger.Get(ctx).Infof("Waiting for the main Tiltfile to load before loading worktree %q", wtName)
 		return nil
 	}
@@ -528,9 +549,7 @@ func (r *Reconciler) applyWorktreeBoundary(
 //
 // Callers must hold r.mu (Reconcile holds it for the whole call).
 func (r *Reconciler) mainLoadCompleted() {
-	held := r.heldWorktrees
-	r.heldWorktrees = make(map[types.NamespacedName]bool, len(held))
-	for nn := range held {
+	for nn := range r.heldWorktrees {
 		r.requeuer.Add(nn)
 	}
 }

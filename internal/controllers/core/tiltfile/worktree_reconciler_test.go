@@ -1,7 +1,9 @@
 package tiltfile
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,32 +97,60 @@ func TestWorktreeRun_AfterMain_PrefixedAndStamped(t *testing.T) {
 
 // A worktree run whose load completes BEFORE the main run's is parked
 // (hold-until-main) and replayed when the main run's load completes.
+//
+// The hold gate (mainSettled) only engages while the main run exists but
+// hasn't finished a load, so the main run is created while its load is
+// blocked on a channel (mainRunBlocker). Everything else loads normally.
 func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
 	f := newFixture(t)
 	p := f.tempdir.JoinPath("Tiltfile")
 
-	wt := manifestbuilder.New(f.tempdir, "web").WithK8sYAML(testyaml.SanchoYAML).Build()
+	release := make(chan struct{})
+	released := false
+	releaseOnce := func() {
+		if !released {
+			close(release)
+			released = true
+		}
+	}
+	defer releaseOnce()
+	f.tfl.Delegate = newMainRunBlocker(f, release)
+
+	// The main run starts and blocks inside its load.
+	main := manifestbuilder.New(f.tempdir, "postgres").WithK8sYAML(testyaml.PostgresYAML).Build()
+	f.tfl.Result = tiltfile.TiltfileLoadResult{Manifests: []model.Manifest{main}}
+	f.Create(mainTiltfile(p))
+	f.waitForRunning(model.MainTiltfileManifestName.String())
+
+	// The worktree run depends on the main-defined shared resource and
+	// finishes its own load while the main run is still blocked: the run
+	// parks — handleLoaded holds its result (heldWorktrees) and reports
+	// Terminated (empty result, no error) without creating owned objects.
+	wt := manifestbuilder.New(f.tempdir, "web").WithK8sYAML(testyaml.SanchoYAML).
+		WithResourceDeps("postgres").Build()
 	f.tfl.Result = tiltfile.TiltfileLoadResult{Manifests: []model.Manifest{wt}}
-
 	f.createAndWaitForLoaded(worktreeTiltfile("feat-auth", p))
+	f.waitForParked("tiltfile:feat-auth")
 
-	// Held: no ConfigsReloadedAction for the worktree run yet, no clone
-	// objects in the apiserver.
+	// Held: no dispatch for the worktree run, no clone objects.
 	_, dispatched := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	assert.False(t, dispatched, "held worktree run must not dispatch before the main run loads")
 	var ka v1alpha1.KubernetesApply
 	assert.False(t, f.Get(types.NamespacedName{Name: "wt:feat-auth/web"}, &ka),
 		"held worktree run must not create owned objects")
 
-	// The main run loads: the held run replays against it.
-	main := manifestbuilder.New(f.tempdir, "postgres").WithK8sYAML(testyaml.PostgresYAML).Build()
-	f.tfl.Result = tiltfile.TiltfileLoadResult{Manifests: []model.Manifest{main}}
-	f.createAndWaitForLoaded(mainTiltfile(p))
+	// The main run's load completes: its result dispatches, the parked
+	// worktree run is kicked (mainLoadCompleted), and one more reconcile
+	// replays its parked TLR (Reconcile's held-run branch) against the
+	// main run's manifests.
+	releaseOnce()
+	f.popQueueUntilTerminatedAfter(model.MainTiltfileManifestName.String(), time.Now())
+	f.MustReconcile(types.NamespacedName{Name: "tiltfile:feat-auth"})
 
 	var cloneKA v1alpha1.KubernetesApply
 	require.Eventually(t, func() bool {
 		return f.Get(types.NamespacedName{Name: "wt:feat-auth/web"}, &cloneKA)
-	}, 1e9, 1e6, "held worktree run must replay after the main run loads")
+	}, time.Second, time.Millisecond, "held worktree run must replay after the main run loads")
 	assert.Equal(t, "feat-auth", cloneKA.Spec.Worktree)
 
 	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
@@ -128,6 +158,52 @@ func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
 	require.Equal(t, model.ManifestName("wt:feat-auth/web"), reloaded.Manifests[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, reloaded.Manifests[0].ResourceDependencies,
 		"dep resolution must use the main run's manifests after replay")
+}
+
+// waitForParked waits until the run's Tiltfile load finished but its result
+// is still parked on the hold-until-main gate: the run reports Terminated
+// (its turn is over) but holds the un-dispatched TLR for replay.
+func (f *fixture) waitForParked(name string) {
+	f.T().Helper()
+	nn := types.NamespacedName{Name: name}
+	require.Eventually(f.T(), func() bool {
+		f.r.mu.Lock()
+		defer f.r.mu.Unlock()
+		run := f.r.runs[nn]
+		return run != nil && run.step == runStepDone && f.r.heldWorktrees[nn] &&
+			run.tlr != nil && run.tlr.Error == nil && len(run.tlr.Manifests) > 0
+	}, time.Second, time.Millisecond, "waiting for run to park on the hold-until-main gate")
+}
+
+// mainRunBlocker blocks ONLY the main Tiltfile's load on `release`; every
+// other run (the worktree runs under test) loads normally. The main run's
+// load result is snapshotted at construction (results[tfl]) so later Result
+// swaps — made while the main load is blocked for the worktree runs — do
+// not leak into the main run's dispatch.
+type mainRunBlocker struct {
+	tfl     *tiltfile.FakeTiltfileLoader
+	results map[string]tiltfile.TiltfileLoadResult
+	release chan struct{}
+}
+
+func newMainRunBlocker(f *fixture, release chan struct{}) mainRunBlocker {
+	return mainRunBlocker{
+		tfl: f.tfl,
+		results: map[string]tiltfile.TiltfileLoadResult{
+			model.MainTiltfileManifestName.String(): f.tfl.Result,
+		},
+		release: release,
+	}
+}
+
+func (b mainRunBlocker) Load(ctx context.Context, tf *v1alpha1.Tiltfile, prevResult *tiltfile.TiltfileLoadResult) tiltfile.TiltfileLoadResult {
+	if tf.Name == model.MainTiltfileManifestName.String() {
+		// Park here until the test releases the main run's load: the
+		// worktree runs under test load while the main run is in-flight.
+		<-b.release
+		return b.results[tf.Name]
+	}
+	return b.tfl.Result
 }
 
 // A worktree run on its own — no main Tiltfile CR exists: the hold releases
