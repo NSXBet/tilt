@@ -95,6 +95,64 @@ func TestCombine_WorktreeDefinitionWins(t *testing.T) {
 	require.Equal(t, 1, count, "shared manifest appears once")
 }
 
+// Rule 1's error arm (plan §3): the worktree's definition of a main-defined
+// resource wins — but only ONE worktree may redefine a shared name. Two
+// worktrees both redefining it is a double-define: the engine cannot pick
+// which definition the shared bare name carries.
+func TestCombine_SharedRedefinedByTwoWorktrees(t *testing.T) {
+	_, err := Combine(
+		[]model.Manifest{md("api", "postgres")},
+		[]RunResult{
+			{Name: "feat-auth", Manifests: []model.Manifest{md("api")}},
+			{Name: "fix-ui", Manifests: []model.Manifest{md("api")}},
+		},
+	)
+	require.ErrorContains(t, err, `shared manifest "api" defined twice: worktrees "feat-auth" and "fix-ui" both redefine it`)
+}
+
+// Composition of rule 1: one worktree redefines the shared resource, another
+// merely depends on it. The redefining worktree's copy wins the bare name
+// (main's slot), and the dependent worktree's dep stays bare — it resolves
+// to the winner, not to a clone.
+func TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees(t *testing.T) {
+	out, err := Combine(
+		[]model.Manifest{md("api", "postgres")},
+		[]RunResult{
+			{Name: "feat-auth", Manifests: []model.Manifest{md("api", "web"), md("web")}},
+			{Name: "fix-ui", Manifests: []model.Manifest{md("frontend", "api")}},
+		},
+	)
+	require.NoError(t, err)
+
+	// The winner replaces main's copy under the bare engine name; its own
+	// deps rewrite to its clones and it gains the self-reference dep.
+	require.Equal(t, model.ManifestName("api"), out[0].Name)
+	require.Equal(t,
+		[]model.ManifestName{"wt:feat-auth/web", "api"},
+		out[0].ResourceDependencies)
+	require.Equal(t, model.ManifestName("wt:fix-ui/frontend"), out[2].Name)
+	require.Equal(t, []model.ManifestName{"api"}, out[2].ResourceDependencies)
+}
+
+// A worktree-run manifest whose clone name collides with an existing
+// manifest is an error: main literally defines "wt:feat-auth/api" (a free-form
+// engine name), and worktree feat-auth's own "api" rewrites to that clone
+// name. The pass fails loudly instead of silently dropping one definition.
+func TestCombine_CloneNameCollidesWithMain(t *testing.T) {
+	_, err := Combine(
+		[]model.Manifest{md("wt:feat-auth/api")},
+		[]RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("api")}}},
+	)
+	require.ErrorContains(t, err, `clone name "wt:feat-auth/api" (worktree "feat-auth") collides with an existing manifest`)
+}
+
+// A run with no name has no worktree identity: the pass cannot prefix or
+// attribute its manifests.
+func TestCombine_WorktreeRunNoName(t *testing.T) {
+	_, err := Combine(nil, []RunResult{{Name: "", Manifests: []model.Manifest{md("web")}}})
+	require.ErrorContains(t, err, "worktree run 0 has no name")
+}
+
 // Dep on a resource defined only by a DIFFERENT worktree → load error
 // (plan §4.3: same-worktree first, else main-defined — never another
 // worktree's).

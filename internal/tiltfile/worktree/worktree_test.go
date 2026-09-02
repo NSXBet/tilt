@@ -141,3 +141,19 @@ func TestWorktreeConfig_Defaults(t *testing.T) {
 	require.Equal(t, 0, s.PortMax)
 	require.True(t, s.Gateway)
 }
+
+// Plan §3 validation: "dir missing/empty → no worktrees, classic behavior."
+// An explicitly empty dir= leaves the default ".worktree" — an empty
+// override must not clobber it into ""; the explicit gateway override
+// alongside still applies.
+func TestWorktreeConfig_EmptyDirKeepsDefault(t *testing.T) {
+	f := starkit.NewFixture(t, NewPlugin())
+	f.File("Tiltfile", `
+worktree_config(dir="", gateway=False)
+`)
+	model, err := f.ExecFile("Tiltfile")
+	require.NoError(t, err)
+	s := MustState(model)
+	require.Equal(t, ".worktree", s.Dir)
+	require.False(t, s.Gateway)
+}
