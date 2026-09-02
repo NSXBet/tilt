@@ -134,7 +134,14 @@ func initGitRepo(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
-	runGit(t, root, "init", "-q", ".")
+	// This suite shells out to `git` (worktree add / commit). It must not
+	// inherit the developer's global/system config: commit signing (e.g.
+	// gpg or a 1Password ssh signer) fails in the sandbox, and hooks/aliases
+	// change behavior. GIT_CONFIG_GLOBAL/SYSTEM=devnull pins identity to the
+	// per-command -c overrides below.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	runGit(t, root, "init", "-q", "-b", "main", ".")
 	runGit(t, root, "-c", "user.name=t", "-c", "user.email=t@t.local",
 	// Hermetic fixture: global commit signing (commit.gpgsign with
 	// gpg.format=ssh via a signing agent) must not reach the test —
