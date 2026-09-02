@@ -454,7 +454,10 @@ func (r *Reconciler) runCmdDeploy(ctx context.Context, spec v1alpha1.KubernetesA
 	// unmodified): Tilt only parses and tracks it.
 	if spec.Worktree != "" {
 		scrubServerFields(entities)
-		entities = stampWorktreeClones(entities, spec.Worktree)
+		entities, err = stampWorktreeClones(entities, spec.Worktree)
+		if err != nil {
+			return nil, err
+		}
 
 		deployed, err := r.k8sClient.Upsert(ctx, entities, timeout, k8s.SSAOptions{})
 		if err != nil {
@@ -621,7 +624,10 @@ func (r *Reconciler) createEntitiesToDeploy(ctx context.Context,
 	// clones carry everything the stable entities got, computed from the
 	// stable's spec. The main run (Worktree == "") is a no-op.
 	if spec.Worktree != "" {
-		newK8sEntities = stampWorktreeClones(newK8sEntities, spec.Worktree)
+		newK8sEntities, err = stampWorktreeClones(newK8sEntities, spec.Worktree)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return newK8sEntities, nil
