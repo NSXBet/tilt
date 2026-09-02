@@ -1,0 +1,31 @@
+tk-hd5 final validation — Wed Sep  2 11:04:55 -03 2026
+Validator: ValidatorHd5
+
+=== 1. Acceptance tests (task's own) — internal/cli, worktree tk-hd5 ===
+--- PASS: TestDownWorktrees (0.00s)
+--- PASS: TestDownWorktreesSkipsBrokenWorktree (0.00s)
+--- PASS: TestDownNoWorktreesFlag (0.01s)
+--- PASS: TestDownWorktreeCloneNames (0.00s)
+All 17 pre-existing TestDown* tests also PASS (TestDownK8sYAML .. TestDownArgs) — see /tmp/tk-hd5-cli-full.txt: 39 PASS, 0 FAIL before pre-existing TestEdit hang.
+
+=== 2. internal/controllers/core/kubernetesapply full package ===
+ok  github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply 1.246s  (includes new worktree_gc_test.go: TestWorktreeGCClonesOrphanedClones, TestWorktreeGCKeepsLiveAndForeignClones, TestWorktreeGC_NoWorktreesNoop — all PASS)
+
+=== 3. REGRESSION: --delete-volumes flag deleted by c9c09d3ac ===
+Built binary from worktree (go build ./cmd/tilt):
+  $ /tmp/tilt-hd5 down --help | grep delete-volumes
+  Docker Volumes are not deleted by default. Use --delete-volumes to change that.   <- help text STILL advertises it
+  (flag absent from Flags: list — only --delete-namespaces and --worktrees registered)
+  $ /tmp/tilt-hd5 down --delete-volumes
+  unknown flag: --delete-volumes   exit=1
+Prior validator artifact also captured this: .agents/match/validations/tk-hd5-delete-volumes-regression.txt
+Master (upstream PR 6594) registers: cmd.Flags().BoolVar(&c.deleteVolumes, "delete-volumes", ...) — deleted by this task; field still exists and is passed to dcc.Down as constant false (docker-compose volumes can no longer be deleted). Plan §9.1 does not authorize removing it.
+
+=== 4. TestEdit hang — classified PRE-EXISTING, not caused by this task ===
+Hangs 4/4 (3x tk-hd5 worktree, 1x master checkout @ c9a44c7ec, same signature: store.Loop goroutine stuck on actionCh chan receive).
+internal/cli/get_test.go and internal/hud/server are IDENTICAL between baseline ee0cfda53 and master; tk-hd5 diff touches neither. Excluded-scope rerun: TestGet|TestUp|TestCi => ok (1.070s).
+
+=== 5. Diff review summary ===
+down.go: worktree re-execution + manifest dedupe + clone deletion via exported WorktreeClones + broken-tiltfile skip: sound, matches plan §9.1.
+worktree_gc.go: seen-set-scoped orphan clone pruning keyed on tilt.dev/worktree annotation + tiltfile:<wt> CRs; failed-list skips pass: sound.
+REJECT reason is solely the --delete-volumes regression (upstream feature deleted, help text inconsistent, dc.Down arg now constant false).
