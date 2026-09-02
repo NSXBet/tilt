@@ -1,0 +1,52 @@
+POST-MERGE VALIDATION — tk-zkx (local_resource worktree instance/cwd/identity tests)
+Date: 2026-09-02
+Repo: /Users/yuri/Workdir/Nsx/tilt (master)
+Validated by: PM1 (post-merge validator)
+
+HEAD CHECK
+----------
+git log --oneline -1 -> 6c9d1d48c merge: tk-zkx — local_resource worktree instance/cwd/identity tests
+  [matches expected merge commit]
+
+ENVIRONMENT
+-----------
+GOCACHE=$HOME/.cache/go-build-val-pm1 (private, per assignment)
+go test run from repo root, master checkout.
+
+RESULTS
+-------
+1) Targeted new tests (the 3 added by tk-zkx, internal/tiltfile/local_resource_worktree_test.go):
+   go test ./internal/tiltfile/ -count=1 \
+     -run 'TestLocalResource_WorktreeCwd|TestLocalResource_MainRunCwdUnchanged|TestLocalResource_WorktreeIdentityAndSharedInheritance' -v
+   --- PASS: TestLocalResource_WorktreeCwd (0.00s)
+   --- PASS: TestLocalResource_MainRunCwdUnchanged (0.00s)
+   --- PASS: TestLocalResource_WorktreeIdentityAndSharedInheritance (0.00s)
+   PASS  ok github.com/tilt-dev/tilt/internal/tiltfile 1.656s
+
+2) Full local_resource surface:
+   go test ./internal/tiltfile/ -count=1 -run 'TestLocalResource' -v
+   25 tests incl. all 3 new -> all PASS, ok 1.394s, 0 failures.
+
+3) Full subtree:
+   go test ./internal/tiltfile/... -count=1
+   28/29 packages ok (incl. internal/tiltfile/worktree, starkit, v1alpha1, ...).
+   Root package internal/tiltfile FAILs ONLY on:
+     --- FAIL: TestKustomizeBin
+     --- FAIL: TestKustomizeFlags
+   Classification: ENVIRONMENTAL, per known baseline.
+   Verification: `which kustomize` -> not found (exit 1). Test output shows
+   "Falling back to `kubectl kustomize` since `kustomize` was not found in PATH"
+   and TestKustomizeBin's stub exec fails with exit status 127 (kustomize: not found).
+   Identical failure on any master checkout without the kustomize binary —
+   NOT caused by the merge. No other failures in the root package (every
+   TestLocalResource* passes there).
+
+4) Acceptance #3 note: internal/tiltfile/tiltfileloading/ does not exist in this
+   repo; per assignment fallback, the worker's tests live in ./internal/tiltfile
+   itself — covered by (1)/(2)/(3).
+
+VERDICT
+-------
+No integration regression vs the branch-only run: all 3 new worktree tests and
+the surrounding local_resource suites pass on merged master (6c9d1d48c). Only
+pre-known environmental kustomize failures remain.
