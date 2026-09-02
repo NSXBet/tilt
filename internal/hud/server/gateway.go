@@ -89,8 +89,9 @@ func newGatewayProxy(target *url.URL) http.Handler {
 }
 
 // gatewayHandler routes gateway hosts to their worktree endpoints; requests
-// that are not gateway-hosted (or whose worktree has no live endpoint) fall
-// through to next.
+// that are not gateway-hosted fall through to next. A gateway host whose
+// worktree is unknown or has no live endpoint gets a 503 — falling through
+// would serve the main UI under a worktree hostname.
 func (s *HeadsUpServer) gatewayHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		worktree := gatewayWorktree(r.Host)

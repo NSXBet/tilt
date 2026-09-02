@@ -101,6 +101,44 @@ func TestGatewayMainUIHosts(t *testing.T) {
 	}
 }
 
+func TestGatewayHostWithPortRoutesToWorktreeEndpoint(t *testing.T) {
+	backend := worktreeBackend(t, 0)
+	u, _ := url.Parse(backend.URL)
+	port := 0
+	_, err := fmt.Sscanf(u.Port(), "%d", &port)
+	require.NoError(t, err)
+
+	f := newTestFixture(t)
+	f.setWorktreeEndpoint("feat-auth", port)
+
+	// Browsers always send the port in the Host header; the worktree is
+	// matched on the hostname alone.
+	rr := f.routerHostReq("feat-auth.tilt.localhost:10350")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, worktreeResponseBody, rr.Body.String())
+}
+
+func TestGatewayUnknownWorktreeReturns503(t *testing.T) {
+	f := newTestFixture(t)
+	f.setWorktreeEndpoint("feat-auth", 32777)
+
+	rr := f.routerHostReq("no-such-worktree.tilt.localhost")
+	require.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	require.Contains(t, rr.Body.String(), "no-such-worktree")
+}
+
+func TestGatewayUnknownWorktreeNoManifestsReturns503(t *testing.T) {
+	f := newTestFixture(t)
+
+	// No manifests labeled with a worktree: a gateway host for an unknown
+	// worktree must 503, not fall through and serve the main UI under a
+	// worktree hostname.
+	rr := f.routerHostReq("feat-auth.tilt.localhost")
+	require.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	require.Contains(t, rr.Body.String(), "feat-auth")
+	require.NotContains(t, rr.Body.String(), worktreeResponseBody)
+}
+
 func TestGatewayWebSocketUpgradePassthrough(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
