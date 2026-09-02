@@ -101,8 +101,9 @@ func TestApplyBoundary_SharedManifestStaysBare(t *testing.T) {
 }
 
 // Derived names: a clone's DockerImage/LiveUpdate object names re-stamp with
-// the clone manifest name (path-segment safe), while the image target's own
-// ID — ref-derived, shared across worktrees by design — is untouched.
+// the clone manifest name (path-segment safe), and the image target's
+// ref-derived identity — the ImageMap selector — is scoped to the worktree
+// (tk-1zq): distinct ImageMap per worktree, name-matching its own build refs.
 func TestApplyBoundary_DerivedNamesRestamped(t *testing.T) {
 	main := []model.Manifest{boundaryMd("postgres")}
 	out, err := ApplyBoundary(main, RunResult{
@@ -113,9 +114,10 @@ func TestApplyBoundary_DerivedNamesRestamped(t *testing.T) {
 
 	m := out.Manifests[0]
 	iTarget := m.ImageTargets[0]
-	// Image target ID stays ref-derived: per-worktree ImageMap identity is
-	// the tag-rewrite task (tk-1zq), not the boundary pass.
-	require.Equal(t, "registry.example.com_api", iTarget.ID().Name.String())
+	// ImageMap identity is scoped per worktree (tk-1zq): the clone of the
+	// same Dockerfile gets its own ImageMap, not main's.
+	require.Equal(t, "registry.example.com/api-wt-feat-auth", iTarget.ImageMapSpec.Selector)
+	require.Equal(t, "registry.example.com_api-wt-feat-auth", iTarget.ImageMapName())
 	// Derived object names carry the clone manifest name. SanitizeName
 	// rewrites '/' in the ref to '_' but keeps the wt: prefix and ':'.
 	cloneDerived := apis.SanitizeName("wt:feat-auth_api:" + iTarget.ID().Name.String())

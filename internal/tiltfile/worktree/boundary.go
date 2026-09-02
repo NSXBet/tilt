@@ -2,7 +2,11 @@ package worktree
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/distribution/reference"
+
+	"github.com/tilt-dev/tilt/internal/container"
 	"github.com/tilt-dev/tilt/pkg/apis"
 	"github.com/tilt-dev/tilt/pkg/model"
 )
@@ -79,24 +83,37 @@ func ApplyBoundary(main []model.Manifest, run RunResult) (BoundaryResult, error)
 	for _, m := range out {
 		defined = append(defined, m.Name)
 	}
-	return BoundaryResult{Manifests: renameDerivedAll(out), Defined: defined}, nil
+	out, err = renameDerivedAll(out)
+	if err != nil {
+		return BoundaryResult{}, err
+	}
+	return BoundaryResult{Manifests: out, Defined: defined}, nil
 }
 
-// other in the apiserver: per-manifest KubernetesApply, DockerImage,
-// LiveUpdate, CmdImage, local_resource update Cmds, and target names.
+// renameDerivedAll re-stamps every name DERIVED from the bare manifest name
+// across the run's own definitions — per-manifest KubernetesApply, DockerImage,
+// LiveUpdate, CmdImage, local_resource update Cmds, target names, and the
+// worktree-scoped ImageMap identity.
 //
 // A no-op for shared manifests (bare names are already path-segment safe and
 // rename to themselves) and correct for clones (each derived name gains the
 // same clone prefix as its manifest).
-func renameDerivedAll(manifests []model.Manifest) []model.Manifest {
+func renameDerivedAll(manifests []model.Manifest) ([]model.Manifest, error) {
 	for i := range manifests {
-		manifests[i] = renameDerived(manifests[i])
+		m, err := renameDerived(manifests[i])
+		if err != nil {
+			return nil, err
+		}
+		manifests[i] = m
 	}
-	return manifests
+	return manifests, nil
 }
 
-// rewritten) manifest name m.Name.
-func renameDerived(m model.Manifest) model.Manifest {
+// renameDerived rewrites one manifest's derived names against the rewritten
+// manifest name m.Name. ImageMap identity (the ref-derived
+// ImageMapSpec.Selector) is scoped to the worktree here too — see
+// WorktreeImageMapSelector.
+func renameDerived(m model.Manifest) (model.Manifest, error) {
 	// Copy before rewrite: the manifest struct copies done upstream
 	// (applyPrefix) share the ImageTargets backing array with the caller's
 	// input, and the reconciler re-reads bare names after the pass.
@@ -116,16 +133,27 @@ func renameDerived(m model.Manifest) model.Manifest {
 	for j := range m.ImageTargets {
 		iTarget := &m.ImageTargets[j]
 
-		// The image target's ID name derives from the image REF, not the
-		// manifest — it is shared by design across worktrees (same
-		// Dockerfile → same ref; per-worktree ImageMap identity is task
-		// tk-1zq's tag-suffix rewrite, not this pass). But the derived
-		// object names embedded at load time (DockerImageName,
-		// LiveUpdateName, CmdImageName — dockerimage.GetName(mn, id) et al,
-		// tiltfile_state.go imgTargetsForDepsHelper) were stamped from the
-		// BARE manifest name. Re-stamp them with the clone name so main and
-		// worktree builds never share DockerImage/LiveUpdate/CmdImage
-		// objects.
+		// Two worktrees building the same Dockerfile produce the same bare
+		// selector — the same ImageMap name — so without scoping they would
+		// share one ImageMap object (and its build-cache lineage) even
+		// though their builds retag differently (tk-7gg's -wt-<worktree>
+		// tag token). Scope the selector to this worktree: the identity
+		// becomes <ref>-wt-<worktree>, mirroring the build tag token, so
+		// the worktree-scoped ImageMap is a distinct apiserver object with
+		// its own cache lineage, and its default (name-match) selector
+		// still matches the worktree's retagged build ref.
+		//
+		// Only clones get scoped identity. Shared (main-defined) manifests
+		// keep the bare selector: they are main's resources — one shared
+		// ImageMap by design (plan §3 shared-hack inheritance) — and their
+		// bare name is not a clone name.
+		if IsCloneName(m.Name) && iTarget.ImageMapSpec.Selector != "" {
+			selector, err := WorktreeImageMapSelector(string(m.Name), iTarget.ImageMapSpec.Selector)
+			if err != nil {
+				return model.Manifest{}, err
+			}
+			iTarget.ImageMapSpec.Selector = selector
+		}
 		if iTarget.LiveUpdateName != "" {
 			iTarget.LiveUpdateName = apis.SanitizeName(
 				derivedObjectName(m.Name, iTarget.ID().Name))
@@ -138,10 +166,26 @@ func renameDerived(m model.Manifest) model.Manifest {
 			iTarget.CmdImageName = apis.SanitizeName(
 				derivedObjectName(m.Name, iTarget.ID().Name))
 		}
+		if len(iTarget.ImageMapDeps()) > 0 {
+			// Base-image deps are ImageMap names (ref-derived identities).
+			// Scope them like the target's own identity, so a multi-stage
+			// build inside the worktree consumes the worktree-scoped base
+			// ImageMap (its own cache lineage), never main's.
+			deps := iTarget.ImageMapDeps()
+			scopedDeps := make([]string, 0, len(deps))
+			for _, dep := range deps {
+				scopedDep, err := WorktreeImageMapSelector(string(m.Name), dep)
+				if err != nil {
+					return model.Manifest{}, err
+				}
+				scopedDeps = append(scopedDeps, scopedDep)
+			}
+			*iTarget = iTarget.WithImageMapDeps(scopedDeps)
+		}
 		m.ImageTargets[j] = *iTarget
 	}
 
-	return m
+	return m, nil
 }
 
 // derivedObjectName mirrors the loader's derived-name format
@@ -149,4 +193,51 @@ func renameDerived(m model.Manifest) model.Manifest {
 // rewritten manifest name.
 func derivedObjectName(mn model.ManifestName, targetName model.TargetName) string {
 	return string(mn) + ":" + string(targetName)
+}
+
+// WorktreeImageMapSelector scopes an image map's ref-derived selector to one
+// worktree run: `<selector>-wt-<worktree>`, the same `-wt-<worktree>` token
+// the build-side tag rewrite (tk-7gg, container.WorktreeTagSuffix) appends
+// to built image tags. Identity stays ref-derived — ImageTarget.ImageMapName
+// hashes the selector — so a worktree clone of a shared Dockerfile gets its
+// own ImageMap object (own build-cache lineage; CanReuseRef keys on the
+// retagged ref) while the default name-match selector still matches the
+// worktree's retagged build refs and nothing else's.
+//
+// The token is escaped through container.WorktreeTagSuffix so the scoped
+// selector is always a parseable image reference, identical to the tag
+// surface. cloneName is the engine-internal clone manifest name
+// (`wt:<worktree>_<name>`); the worktree name is extracted from its
+// worktree-scoped segment. Bare names (shared manifests) must never reach
+// this — callers scope only their own clones.
+func WorktreeImageMapSelector(cloneName, selector string) (string, error) {
+	wt, ok := worktreeOfCloneName(model.ManifestName(cloneName))
+	if !ok {
+		return "", fmt.Errorf("internal error: %q is not a worktree clone name", cloneName)
+	}
+	token, err := container.WorktreeTagSuffix(wt)
+	if err != nil {
+		return "", err
+	}
+	scoped := selector + token
+	if _, err := reference.ParseNormalizedNamed(scoped); err != nil {
+		return "", fmt.Errorf("scoping image selector %q to worktree %q: %v", selector, wt, err)
+	}
+	return scoped, nil
+}
+
+// worktreeOfCloneName extracts the worktree name from a clone manifest name
+// (`wt:<worktree>_<name>` → worktree). Worktree names are directory
+// basenames and cannot contain '_' per Discover; the name prefix is `wt:`.
+func worktreeOfCloneName(name model.ManifestName) (string, bool) {
+	s := string(name)
+	if !strings.HasPrefix(s, namePrefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(s, namePrefix)
+	idx := strings.Index(rest, "_")
+	if idx <= 0 {
+		return "", false
+	}
+	return rest[:idx], true
 }
