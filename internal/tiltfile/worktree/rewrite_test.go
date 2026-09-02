@@ -15,15 +15,15 @@ import (
 func TestRewriteRun_NilMain_PrefixesWithoutDepResolution(t *testing.T) {
 	in := []model.Manifest{md("api", "postgres")}
 	out := RewriteRun(in, "feat-auth", nil)
-	require.Equal(t, model.ManifestName("wt:feat-auth/api"), out[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, out[0].ResourceDependencies)
 }
 
 func TestRewriteRun_MainResult_ResolvedDepsAndSource(t *testing.T) {
 	in := []model.Manifest{md("api", "postgres", "web")}
 	out := RewriteRun(in, "feat-auth", []model.Manifest{md("postgres")})
-	require.Equal(t, model.ManifestName("wt:feat-auth/api"), out[0].Name)
-	require.Equal(t, []model.ManifestName{"postgres", "wt:feat-auth/web"}, out[0].ResourceDependencies)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out[0].Name)
+	require.Equal(t, []model.ManifestName{"postgres", "wt:feat-auth_web"}, out[0].ResourceDependencies)
 }
 
 func TestRewriteRun_SharedManifestStaysBare(t *testing.T) {

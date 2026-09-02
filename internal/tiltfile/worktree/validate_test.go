@@ -167,16 +167,11 @@ func TestCombine_CrossWorktreeDepError(t *testing.T) {
 	require.ErrorContains(t, err, `depends on "api"`)
 }
 
-// Undefined dep (main or worktree) → load error; the pass does not invent
+// Undefined dep with a main result → load error; the pass does not invent
 // names (plan §11: load error by construction).
 func TestCombine_UndefinedDepError(t *testing.T) {
 	_, err := Combine([]model.Manifest{md("postgres", "missing")}, nil)
 	require.ErrorContains(t, err, `depends on "missing"`)
-
-	_, err = Combine(nil, []RunResult{
-		{Name: "feat-auth", Manifests: []model.Manifest{md("web", "ghost")}},
-	})
-	require.ErrorContains(t, err, `depends on "ghost"`)
 }
 
 // One-way dep invariant (plan §12): a shared (main-defined) manifest must
@@ -204,15 +199,19 @@ func TestCombine_ResourceDependedByTwoWorktreesSharedFromMain(t *testing.T) {
 	require.Equal(t, []model.ManifestName{"admin-bff-image"}, out[2].ResourceDependencies)
 }
 
-// No main-run result (nil): run manifests are still prefixed, but bare deps
-// cannot resolve and error — matching applyPrefix's nil-wtOwned contract.
-func TestCombine_NilMainStillValidates(t *testing.T) {
+// No main-run result (nil): the rewrite is conservative — names prefixed,
+// bare deps left untouched, NO dep error. The run was kicked without a main
+// result (main failed, or the main CR vanished mid-park); the engine
+// reports the unresolved dep, not this pass (hold/replay lifecycle,
+// tk-jxc: TestWorktreeRun_AfterFailedMain).
+func TestCombine_NilMainConservative(t *testing.T) {
 	out, err := Combine(nil, []RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("web")}}})
 	require.NoError(t, err)
 	require.Equal(t, model.ManifestName("wt:feat-auth_web"), out[0].Name)
 
-	_, err = Combine(nil, []RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("web", "ghost")}}})
-	require.ErrorContains(t, err, `depends on "ghost"`)
+	out, err = Combine(nil, []RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("web", "ghost")}}})
+	require.NoError(t, err)
+	require.Equal(t, []model.ManifestName{"ghost"}, out[0].ResourceDependencies)
 }
 
 // Classic behavior: no worktrees → main manifests pass through, still

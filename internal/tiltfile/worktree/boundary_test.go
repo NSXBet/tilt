@@ -142,14 +142,18 @@ func TestApplyBoundary_LocalTargetRenamed(t *testing.T) {
 	require.Equal(t, "wt:feat-auth_web:update", lt.UpdateCmdName())
 }
 
-// No main result yet: names are still rewritten; bare deps cannot resolve
-// and error (Combine's nil-main contract), surfaced as the run's load error.
-func TestApplyBoundary_NilMainErrorsOnUnresolvedDep(t *testing.T) {
-	_, err := ApplyBoundary(nil, RunResult{
+// No main result yet (main failed or produced nothing): the rewrite is
+// conservative — names prefixed, deps left untouched, no dep error. A bare
+// dep that names a main-defined resource cannot resolve until the main run
+// has a result; the engine reports the unknown dep, not this pass.
+func TestApplyBoundary_NilMainConservative(t *testing.T) {
+	out, err := ApplyBoundary(nil, RunResult{
 		Name:      "feat-auth",
 		Manifests: []model.Manifest{boundaryMd("api", "postgres")},
 	})
-	require.ErrorContains(t, err, `depends on "postgres"`)
+	require.NoError(t, err)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out.Manifests[0].Name)
+	require.Equal(t, []model.ManifestName{"postgres"}, out.Manifests[0].ResourceDependencies)
 }
 
 // Double-define of the same shared name by two worktrees is a load error;

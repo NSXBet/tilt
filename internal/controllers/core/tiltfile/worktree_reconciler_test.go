@@ -20,7 +20,7 @@ import (
 // Acceptance (plan §7.3): the Tiltfile reconciler handles multiple Tiltfiles.
 // Every Tiltfile CR is one engine execution — the main "(Tiltfile)" and one
 // "tiltfile:<worktree>" per worktree — with per-run engine-prefix rewriting
-// (wt:<worktree>/<name>), hold-until-main for early worktree loads, and
+// (`wt:<worktree>_<name>` clone names), hold-until-main for early worktree loads, and
 // worktree stamping on KubernetesApply objects so apply-time clone stamping
 // fires. Retires TODO(nick) at the old reconciler.go:365.
 
@@ -80,13 +80,13 @@ func TestWorktreeRun_AfterMain_PrefixedAndStamped(t *testing.T) {
 	// The dispatch carries the engine-prefixed clone.
 	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	require.True(t, ok, "no ConfigsReloadedAction for the worktree run")
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), reloaded.Manifests[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), reloaded.Manifests[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, reloaded.Manifests[0].ResourceDependencies,
 		"dep on a main-defined shared resource stays bare")
 
 	// The KubernetesApply object is stamped with the worktree name.
 	var ka v1alpha1.KubernetesApply
-	require.NoError(t, f.Client.Get(f.Context(), types.NamespacedName{Name: "wt:feat-auth/web"}, &ka))
+	require.NoError(t, f.Client.Get(f.Context(), types.NamespacedName{Name: "wt:feat-auth_web"}, &ka))
 	assert.Equal(t, "feat-auth", ka.Spec.Worktree)
 
 	// The main run's own KubernetesApply is untouched.
@@ -136,7 +136,7 @@ func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
 	_, dispatched := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	assert.False(t, dispatched, "held worktree run must not dispatch before the main run loads")
 	var ka v1alpha1.KubernetesApply
-	assert.False(t, f.Get(types.NamespacedName{Name: "wt:feat-auth/web"}, &ka),
+	assert.False(t, f.Get(types.NamespacedName{Name: "wt:feat-auth_web"}, &ka),
 		"held worktree run must not create owned objects")
 
 	// The main run's load completes: its result dispatches, the parked
@@ -149,13 +149,13 @@ func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
 
 	var cloneKA v1alpha1.KubernetesApply
 	require.Eventually(t, func() bool {
-		return f.Get(types.NamespacedName{Name: "wt:feat-auth/web"}, &cloneKA)
+		return f.Get(types.NamespacedName{Name: "wt:feat-auth_web"}, &cloneKA)
 	}, time.Second, time.Millisecond, "held worktree run must replay after the main run loads")
 	assert.Equal(t, "feat-auth", cloneKA.Spec.Worktree)
 
 	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	require.True(t, ok, "replayed worktree run must dispatch")
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), reloaded.Manifests[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), reloaded.Manifests[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, reloaded.Manifests[0].ResourceDependencies,
 		"dep resolution must use the main run's manifests after replay")
 }
@@ -222,10 +222,10 @@ func TestWorktreeRun_Standalone_NoMainCR(t *testing.T) {
 	// dispatched as a standalone worktree.
 	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	require.True(t, ok, "standalone worktree run must dispatch once the hold releases")
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), reloaded.Manifests[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), reloaded.Manifests[0].Name)
 
 	var ka v1alpha1.KubernetesApply
-	require.NoError(t, f.Client.Get(f.Context(), types.NamespacedName{Name: "wt:feat-auth/web"}, &ka))
+	require.NoError(t, f.Client.Get(f.Context(), types.NamespacedName{Name: "wt:feat-auth_web"}, &ka))
 	assert.Equal(t, "feat-auth", ka.Spec.Worktree)
 }
 
@@ -271,5 +271,5 @@ func TestWorktreeRun_AfterFailedMain(t *testing.T) {
 	// The dispatch still happened (main settled, albeit with an error).
 	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
 	require.True(t, ok, "worktree run must dispatch after a failed main run settles")
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), reloaded.Manifests[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), reloaded.Manifests[0].Name)
 }

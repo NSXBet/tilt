@@ -83,8 +83,11 @@ func TestReconciler_MainRunUnchanged(t *testing.T) {
 	assert.Equal(t, model.ManifestName("foo"), a.Manifests[0].Name)
 }
 
-// Worktree run with no main result available: names are still rewritten,
-// but bare deps cannot resolve — surfaced as the run's load error.
+// Worktree run with no main result available (no main CR ran — the main CR
+// has never existed, or the main run failed): the rewrite is conservative —
+// the clone name is rewritten, bare deps are left untouched, and the run
+// still dispatches. The engine reports the unknown dep when the clone's
+// resources reference a shared resource the main run never defined.
 func TestReconciler_WorktreeBoundaryNoMainResult(t *testing.T) {
 	f := newFixture(t)
 	p := f.tempdir.JoinPath("Tiltfile")
@@ -101,8 +104,11 @@ func TestReconciler_WorktreeBoundaryNoMainResult(t *testing.T) {
 	f.createAndWaitForLoaded(tf)
 
 	a := f.st.WaitForAction(t, actionTypeConfigsReloaded()).(ConfigsReloadedAction)
-	require.Error(t, a.Err, "a dep on a manifest no run defines must fail the load")
-	require.Empty(t, a.Manifests)
+	require.NoError(t, a.Err, "nil main = conservative rewrite; the run dispatches")
+	require.Equal(t, 1, len(a.Manifests))
+	assert.Equal(t, model.ManifestName("wt:feat-auth_web"), a.Manifests[0].Name)
+	assert.Equal(t, []model.ManifestName{"postgres"}, a.Manifests[0].ResourceDependencies,
+		"deps are left untouched when no main result exists to resolve against")
 }
 
 // actionTypeConfigsReloaded is the reflect.Type of ConfigsReloadedAction,

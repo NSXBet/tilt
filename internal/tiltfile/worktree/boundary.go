@@ -213,6 +213,21 @@ func renameDerived(m model.Manifest) (model.Manifest, error) {
 			return model.Manifest{}, err
 		}
 		m.DeployTarget = scoped
+
+		// Stamp the K8s apply spec with the worktree name, so apply-time
+		// clone stamping (kubernetesapply/worktree_clone.go) fires for this
+		// run's entities only. The loader stamps this per run
+		// (tiltfile_state.go k8sDeployTarget: Worktree: s.worktree); the
+		// boundary pass re-stamps because the spec rides the manifest into
+		// toKubernetesApplyObjects (tiltfile/api.go) — the persisted
+		// KubernetesApply CR must carry the worktree identity even when the
+		// load result came from a loader that predates run-context injection
+		// (e.g. the engine's replay of a parked TLR).
+		if kt, ok := m.DeployTarget.(model.K8sTarget); ok {
+			wt, _ := SplitName(m.Name)
+			kt.KubernetesApplySpec.Worktree = string(wt)
+			m.DeployTarget = kt
+		}
 	}
 
 	return m, nil

@@ -17,8 +17,8 @@ func TestSplitName(t *testing.T) {
 		{"", ""},
 		{"postgres", "postgres"},
 		{"(Tiltfile)", "(Tiltfile)"},
-		{"wt:feat-auth/incidents-admin", "incidents-admin"},
-		{"wt:feat-auth/api", "api"},
+		{"wt:feat-auth_incidents-admin", "incidents-admin"},
+		{"wt:feat-auth_api", "api"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wt, base := SplitName(model.ManifestName(tc.name))

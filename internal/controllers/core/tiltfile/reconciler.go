@@ -543,6 +543,7 @@ func (r *Reconciler) applyWorktreeBoundary(
 	logger.Get(ctx).Debugf("worktree %q: rewrote %d manifest(s) at the engine boundary", worktreeName, len(result.Manifests))
 	return nil
 }
+
 // mainLoadCompleted kicks worktree runs that finished their load before the
 // main run did: their results were parked (handleLoaded) and are now
 // replayable against the main run's manifests.

@@ -127,26 +127,34 @@ func Combine(main []model.Manifest, runs []RunResult) ([]model.Manifest, error) 
 	// Every dep resolves to a manifest in the combined set. Errors report
 	// author-visible names: dep resolution happened pre-prefix (applyPrefix),
 	// so a run manifest's deps are stored pre-rewrite in rawDeps.
-	for _, m := range combined {
-		deps := m.ResourceDependencies
-		reportName := m.Name
-		runName := ""
-		if raw, ok := rawName[m.Name]; ok {
-			reportName = raw
-			deps = rawDeps[m.Name]
-			runName = rawRun[m.Name]
-		}
-		for _, dep := range deps {
-			// Raw deps resolve same-worktree first (the run's own clone,
-			// §4.3), else main-defined (bare). Anything else is a load
-			// error, reported with the author-visible dep name.
-			if defined[dep] {
-				continue
+	//
+	// Skipped when main is nil: deps were deliberately left untouched
+	// (applyPrefix's nil-wtOwned contract), so a bare dep that names a
+	// main-defined resource has nothing to resolve against yet — the
+	// run was kicked conservatively (main failed or produced no result)
+	// and the engine, not this pass, reports the unknown dep.
+	if main != nil {
+		for _, m := range combined {
+			deps := m.ResourceDependencies
+			reportName := m.Name
+			runName := ""
+			if raw, ok := rawName[m.Name]; ok {
+				reportName = raw
+				deps = rawDeps[m.Name]
+				runName = rawRun[m.Name]
 			}
-			if runName != "" && defined[ManifestName(runName, string(dep))] {
-				continue
+			for _, dep := range deps {
+				// Raw deps resolve same-worktree first (the run's own clone,
+				// §4.3), else main-defined (bare). Anything else is a load
+				// error, reported with the author-visible dep name.
+				if defined[dep] {
+					continue
+				}
+				if runName != "" && defined[ManifestName(runName, string(dep))] {
+					continue
+				}
+				return nil, fmt.Errorf("manifest %q depends on %q, which is not defined by the main run or its worktree", reportName, dep)
 			}
-			return nil, fmt.Errorf("manifest %q depends on %q, which is not defined by the main run or its worktree", reportName, dep)
 		}
 	}
 	// One-way dep invariant (§12): shared (main-defined) manifests never

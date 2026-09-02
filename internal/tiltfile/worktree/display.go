@@ -11,16 +11,18 @@ import (
 // author-visible name and group rows by worktree.
 
 // SplitName splits an engine-internal manifest name into its worktree and
-// author-visible parts. For a clone `wt:<worktree>/<name>` it returns
-// (worktree, base); for any other name (main-run manifests, the Tiltfile
-// resource) it returns ("", name) unchanged.
+// author-visible parts. For a clone `wt:<worktree>_<name>` (underscore join —
+// the engine-internal name doubles as apiserver object name, and
+// BeforeCreate rejects '/' in names) it returns (worktree, base); for any
+// other name (main-run manifests, the Tiltfile resource) it returns
+// ("", name) unchanged.
 func SplitName(name model.ManifestName) (worktree, base model.ManifestName) {
 	s := string(name)
 	rest, ok := strings.CutPrefix(s, namePrefix)
 	if !ok {
 		return "", name
 	}
-	wtStr, baseStr, found := strings.Cut(rest, "/")
+	wtStr, baseStr, found := strings.Cut(rest, "_")
 	if !found {
 		return "", name
 	}
