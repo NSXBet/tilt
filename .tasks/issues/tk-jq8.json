@@ -4,14 +4,14 @@
   "id": "tk-jq8",
   "title": "Multi-Tiltfile CR creation",
   "description": "",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:19.983Z",
-  "updated_at": "2026-08-30T12:52:07.213Z",
+  "updated_at": "2026-09-02T09:27:01.324Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,10 +26,33 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-f446ed37-59b5-4535-b2fb-00fb09f19692",
+      "issue_id": "tk-jq8",
+      "author": "yuri",
+      "text": "SPEC (from plan §2/§7.2): ConfigsController.maybeCreateInitialTiltfile (internal/engine/configs/configs_controller.go:42) currently creates exactly one Tiltfile CR named model.MainTiltfileManifestName ('(Tiltfile)'). Generalize: position-based discovery of worktrees (scan worktree_config dir, default .worktree/ — see internal/tiltfile/worktree/discover.go) creates one Tiltfile CR per worktree: '(Tiltfile)' for main + 'tiltfile:<wt>' per worktree sharing the root Tiltfile path, plus a marker the reconciler sets (plan §0: synthetic exec path <worktree>/Tiltfile). There is a red test TestCreateTiltfile_Worktrees waiting for this (per striker:3 sibling report). Acceptance: test green; two worktrees -> three CRs; zero worktrees -> classic single CR; --worktrees=false -> single CR; go test ./internal/engine/configs/... green.",
+      "created_at": "2026-09-01T03:05:34.918Z"
+    },
+    {
+      "id": "comment-dec99775-a134-4afe-806c-ed26df23088b",
+      "issue_id": "tk-jq8",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:37.047Z"
+    },
+    {
+      "id": "comment-36c18c6c-ee96-4b1c-90a4-ecbc3717b4a0",
+      "issue_id": "tk-jq8",
+      "author": "yuri",
+      "text": "COACH: worker session torn down with no work produced; worktree clean at baseline. SPEC comment above is the brief. Retry.",
+      "created_at": "2026-09-02T09:27:01.324Z"
+    }
+  ],
+  "comment_count": 3
 }

@@ -4,14 +4,14 @@
   "id": "tk-zfi",
   "title": "Wire registry into portforward reconciler|internal/controllers/core/portforward/reconciler.go:189: LocalPort==0 consults registry before OS. ForwardStatus.LocalPort already reports allocation (pkg/apis/core/v1alpha1/portforward_types.go) -> gateway and UI consume unchanged. Collisions with non-Tilt processes surface as resource errors via existing portforward error path. Test: two worktrees requesting same local port get distinct allocations.",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:28:28.128Z",
-  "updated_at": "2026-08-30T12:52:08.850Z",
+  "updated_at": "2026-09-02T13:03:40.307Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,6 +26,7 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [
     {
@@ -39,6 +40,42 @@
   ],
   "dependency_count": 1,
   "dependent_count": 1,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-2b5583ff-1f8a-45fe-a1a5-46cd4a94fc3a",
+      "issue_id": "tk-zfi",
+      "author": "yuri",
+      "text": "SPEC (from plan §5): internal/portregistry (new pkg) exists on baseline (portregistry.go + tests, untracked->committed). Wire it into portforward reconciler: internal/controllers/core/portforward/reconciler.go:189 — when LocalPort==0, consult registry before OS. ForwardStatus.LocalPort already reports allocation (pkg/apis/core/v1alpha1/portforward_types.go) -> gateway and UI consume unchanged. Collisions with non-Tilt processes surface as resource errors via existing portforward error path. Registry Allocate(owner, requested) honors port_range from worktree_config; stable across Tiltfile reloads. Acceptance: two worktrees requesting same local port get distinct allocations (registry_test.go exists); go test ./internal/controllers/core/portforward/... ./internal/portregistry/... green.",
+      "created_at": "2026-09-01T03:05:59.227Z"
+    },
+    {
+      "id": "comment-f1725c8b-2567-46ad-a3c7-10f5b30c8ca1",
+      "issue_id": "tk-zfi",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:37.560Z"
+    },
+    {
+      "id": "comment-6146c304-c110-4bf9-9f5e-2116ecb08c5f",
+      "issue_id": "tk-zfi",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-zfi but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:52.078Z"
+    },
+    {
+      "id": "comment-ebc9c683-d617-41db-baf8-38620c0fc63b",
+      "issue_id": "tk-zfi",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:49.658Z"
+    },
+    {
+      "id": "comment-67eeac32-f090-4d9c-9af9-ffd280413180",
+      "issue_id": "tk-zfi",
+      "author": "yuri",
+      "text": "APPROVED: (1) Registry consulted when LocalPort==0 before OS — reconciler.go diff implements exactly this (owner=\\ns/name#index\\, explicit ports pass through); verified via ForwardStatus-boundary contract tests. (2) Two worktrees requesting same local port get distinct allocations — TestRegistryAllocatesDistinctPortsPerWorktree PASS (both forwards LocalPort==0, range [20000,20010], distinct ports asserted); TestRegistryAllocatesDistinctPortsPerForward PASS (also fixed a deterministic false-pass in the worker's rewrite). (3) registry_test.go exists — 5 tests, all PASS. (4) Collisions surface via existing error path — TestRegistryExhaustionSurfacesAsForwardError PASS; observed log: 'Error port-forwarding wt:wt-e/api (0 -> 8080): portregistry: port range exhausted: 20300-20300'. (5) Gateway/UI unchanged — pkg/apis untouched; allocation flows through existing maybeUpdateStatus. Tests: internal/controllers/core/portforward 16/16 PASS (go test -count=1 -v, 1.891s), internal/portregistry 11/11 PASS (go test -count=1 -race, 4.238s); go build+vet clean. Note: earlier attempts failed with ENOSPC/link errors from the shared-cache disk emergency (env, not code); final runs used private GOCACHE. Evidence: .agents/match/validations/tk-zfi-evidence.md committed @ 85824d11b.",
+      "created_at": "2026-09-02T13:03:37.041Z"
+    }
+  ],
+  "comment_count": 5
 }

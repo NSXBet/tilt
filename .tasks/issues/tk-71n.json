@@ -4,14 +4,14 @@
   "id": "tk-71n",
   "title": "Double-define and cross-worktree validation",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:20.306Z",
-  "updated_at": "2026-08-30T12:52:06.179Z",
+  "updated_at": "2026-09-02T13:20:45.704Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,10 +26,47 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-be7f01bf-0423-4454-91b6-f3ebf204345d",
+      "issue_id": "tk-71n",
+      "author": "yuri",
+      "text": "SPEC (from plan §3 Validation): loader/cross-Tiltfile validation rules: (1) worktree=True resource defined in main run -> cloned per worktree; if same name ALSO defined by worktree run -> one definition wins (worktree's), other errors as double-define. (2) Resource depended on by two worktrees and defined in neither's run -> resolves to main's (shared). (3) dir missing/empty -> no worktrees, classic behavior. (4) Two worktrees with same basename -> load error. Existing impl internal/tiltfile/worktree/validate.go (validate_test.go exists). Complete the four rules end-to-end through the loader with starkit fixture tests; error messages actionable (name the resource + the two defining worktrees). Acceptance: table-driven tests per rule; go test ./internal/tiltfile/... green.",
+      "created_at": "2026-09-01T03:05:34.816Z"
+    },
+    {
+      "id": "comment-8c256320-a6bd-488a-aed8-57f14db5387d",
+      "issue_id": "tk-71n",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:36.928Z"
+    },
+    {
+      "id": "comment-8fa722f6-34f1-4e56-b3cc-e57d71d563e5",
+      "issue_id": "tk-71n",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-71n but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:52.482Z"
+    },
+    {
+      "id": "comment-13bb83a1-5380-4dff-b8cc-a55c5cacb9fd",
+      "issue_id": "tk-71n",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:48.642Z"
+    },
+    {
+      "id": "comment-c2922564-a0d1-462e-9314-16eb19cf555a",
+      "issue_id": "tk-71n",
+      "author": "yuri",
+      "text": "APPROVED: (1) Rule 1 (worktree redefinition of main-defined resource wins; double-define when two worktrees redefine) — impl validate.go Combine replaces main's copy and errors 'shared manifest defined twice: worktrees X and Y both redefine it' (names resource + both worktrees); covered by TestCombine_WorktreeDefinitionWins + NEW TestCombine_SharedRedefinedByTwoWorktrees + NEW TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees. (2) Rule 2 (dep depended on by two worktrees, defined in neither → resolves to main's shared) — TestCombine_ResourceDependedByTwoWorktreesSharedFromMain + TestCombine_SharedAndCloneDeps + NEW winner-feeds composition test. (3) Rule 3 (dir missing/empty → classic behavior) — Discover returns nil on missing dir; NEW TestWorktreeConfig_EmptyDirKeepsDefault (starkit fixture: dir='' keeps .worktree default, gateway override still applies) + baseline TestDiscover_NoWorktreeDir/EmptyWorktreeDir. (4) Rule 4 (same-basename worktrees → load error) — TestCombine_DuplicateWorktreeName + Discover's 'main' subdir rejection. Also NEW: TestCombine_CloneNameCollidesWithMain, TestCombine_WorktreeRunNoName. Evidence: worktree pkg 40/40 PASS (go test ./internal/tiltfile/worktree/ -count=1, ok 10.370s); full SPEC acceptance go test ./internal/tiltfile/... -count=1 → 30/31 ok incl. worktree pkg; only failure = TestKustomizeFlags/TestKustomizeBin in internal/tiltfile, the documented baseline (no standalone kustomize binary on PATH; verified failing identically at master, pre-declared out of scope by tk-mxh record). go vet/gofmt/go build clean. 6 earlier suite runs died of host disk exhaustion (ENOSPC, multi-agent cold-build race) — env casualties, retried per Main's serialization protocol with private GOCACHE/GOTMPDIR; definitive run green. Evidence file: .agents/match/validations/tk-71n-evidence.txt (commit c8d6bef71). Verdict: APPROVED.",
+      "created_at": "2026-09-02T13:20:36.493Z"
+    }
+  ],
+  "comment_count": 5
 }

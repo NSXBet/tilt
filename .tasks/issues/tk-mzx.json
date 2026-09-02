@@ -4,14 +4,14 @@
   "id": "tk-mzx",
   "title": "Apply interception stage in createEntitiesToDeploy|Worktree mutation stage in KubernetesApplyReconciler.createEntitiesToDeploy (internal/controllers/core/kubernetesapply/reconciler.go:459, next to InjectLabels at 478). Covers runYAMLDeploy (:340) and runCmdDeploy (:382) — ApplyCmd stdout re-parsed (:424-435) flows through same pipeline. Gated on worktree ownership of the KubernetesApply CR.",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:58.760Z",
-  "updated_at": "2026-08-30T12:52:07.755Z",
+  "updated_at": "2026-09-02T13:26:26.219Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,10 +26,47 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 3,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-881925af-45c8-4624-8158-b50a4683ef43",
+      "issue_id": "tk-mzx",
+      "author": "yuri",
+      "text": "SPEC (from plan §4.1): Worktree mutation stage in KubernetesApplyReconciler.createEntitiesToDeploy (internal/controllers/core/kubernetesapply/reconciler.go:459, next to InjectLabels at 478). Covers runYAMLDeploy (:340) and runCmdDeploy (:382) — ApplyCmd stdout re-parsed (:424-435) flows through the same pipeline. Gated on worktree ownership of the KubernetesApply CR. The stage stamps clones of parsed Deployment/StatefulSet per plan §4.2 (see tk-jxb for the stamping function itself — you add the STAGE in the reconciler pipeline, cloning logic comes from internal/... worktree clone helpers; if not yet merged, define the pipeline hook so tk-jxb plugs in cleanly). runYAMLDeploy AND runCmdDeploy paths must both produce clones. Existing red tests: kubernetesapply clone stamping 2/3 fail per striker:3 (internal/controllers/core/kubernetesapply/worktree_clone_test.go). Acceptance: those tests green; go test ./internal/controllers/core/kubernetesapply/... green.",
+      "created_at": "2026-09-01T03:05:35.237Z"
+    },
+    {
+      "id": "comment-a3f905e2-3783-4715-95ad-c2edaef2e085",
+      "issue_id": "tk-mzx",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:36.394Z"
+    },
+    {
+      "id": "comment-3d48e419-bb75-45f6-bd6a-a76f0cd8d49c",
+      "issue_id": "tk-mzx",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-mzx but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:51.073Z"
+    },
+    {
+      "id": "comment-61c8c16c-f3f4-4c31-9a99-871fb756a137",
+      "issue_id": "tk-mzx",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:49.567Z"
+    },
+    {
+      "id": "comment-195c6047-c50a-4e86-90b4-bc2921872c3c",
+      "issue_id": "tk-mzx",
+      "author": "yuri",
+      "text": "APPROVED: Evidence committed at fa734506c (.agents/match/validations/ in tk-mzx worktree). (1) Acceptance 'existing red tests green': TestWorktreeCloneStamping, TestWorktreeCloneStamping_ApplyCmdPath, TestWorktreeCloneStamping_MainRunNoop all PASS — verbose run output in tk-mzx-acceptance-tests-verbose.txt (fresh -count=1, not cached results); verified clone contract holds: both Deployments + Service stamped -wt-feat-auth with worktree label in pod template AND selector + tilt.dev/worktree annotation, stable entities unmutated, shared ConfigMap uncloned. (2) Acceptance 'go test ./internal/controllers/core/kubernetesapply/... green': full package suite ok (tk-mzx-full-package.txt), run three times total across the session, all green. (3) Diff review: single mutation stage at end of createEntitiesToDeploy gated on spec.Worktree != \\\\ (reconciler.go:611) covers runYAMLDeploy; runCmdDeploy interception (reconciler.go:440) reuses same stampWorktreeClones so ApplyCmd stdout produces clones identically — exactly the SPEC's choke-point requirement; main run no-op verified by MainRunNoop test. (4) runCmdDeploy fix is behaviorally sound: upsert now reuses the computed timeout var and SSA options matching the YAML path, duplicate 'Objects applied' report removed (was printing twice on success path). (5) Hygiene: go vet clean, gofmt clean (tk-mzx-vet-gofmt.txt); go build package OK; web/src/core.d.ts byte-identical to tk-a6u's regen commit 866d77d49 (git hash-object == ae24447dc, no semicolon-style drift). (6) No merge, no master touch; evidence-only commit fa734506c contains only .agents/match/validations/ files. Note: earlier ENOSPC build failures during the shared-disk emergency were environmental, retried to green after disk recovery per protocol.",
+      "created_at": "2026-09-02T13:26:20.499Z"
+    }
+  ],
+  "comment_count": 5
 }

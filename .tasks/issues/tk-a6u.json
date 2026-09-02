@@ -4,14 +4,14 @@
   "id": "tk-a6u",
   "title": "Web UI worktree grouping|ResourceGroups.tsx + ResourceGroupsContext.tsx new Worktree group key (grouping infra exists). UIResource labels already carry worktree via Manifest->UIResource label flow (internal/hud/webview/convert.go:266). OverviewTableColumns.tsx worktree column/badge; SidebarResources.tsx sections per worktree; ResourceNameFilter.tsx matches display names. Vitest per OverviewTable.test.tsx patterns. Regenerate TS types: make update-codegen-ts (tygo -> web/src/webview.d.ts).",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:29:01.437Z",
-  "updated_at": "2026-08-30T12:52:06.639Z",
+  "updated_at": "2026-09-02T12:41:35.955Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,10 +26,47 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 1,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-bf948829-9370-4bd3-a8d8-761800a4b402",
+      "issue_id": "tk-a6u",
+      "author": "yuri",
+      "text": "SPEC (from plan §8 + striker:3 sibling report): web/src/ResourceGroups.tsx + ResourceGroupsContext.tsx new Worktree group key (grouping infra exists). UIResource labels already carry worktree via Manifest->UIResource label flow (internal/hud/webview/convert.go:266). OverviewTableColumns.tsx worktree column/badge; SidebarResources.tsx sections per worktree; ResourceNameFilter.tsx matches display names. Regenerate TS types: make update-codegen-ts (tygo -> web/src/webview.d.ts). BASELINE: web/src/labels.ts + OverviewTable cell-model already green; RED: WorktreeGrouping.test.tsx 3/10 fail (badge col + sidebar sections + prefixed group heading unimplemented). Acceptance: all WorktreeGrouping tests green; make update-codegen-ts committed if types changed; go/vitest for touched files green.",
+      "created_at": "2026-09-01T03:05:59.434Z"
+    },
+    {
+      "id": "comment-4c5335b5-3590-4d0d-8dc6-b515b9f660bd",
+      "issue_id": "tk-a6u",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:37.299Z"
+    },
+    {
+      "id": "comment-4d2b3633-6a66-4f2a-8e67-ea07a20c00bd",
+      "issue_id": "tk-a6u",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-a6u but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:52.679Z"
+    },
+    {
+      "id": "comment-ee8962c6-dfb0-43e1-902b-e8a9fced177d",
+      "issue_id": "tk-a6u",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:49.366Z"
+    },
+    {
+      "id": "comment-37ea85b3-0d99-4ca2-913a-70979165e06e",
+      "issue_id": "tk-a6u",
+      "author": "yuri",
+      "text": "APPROVED: Criterion->evidence. (1) WorktreeGrouping tests green: 10/10 PASS (group section per worktree, sorted cell-model groups, main-run stays unlabeled, no group w/o label; badge on worktree rows only; sidebar sections; ResourceNameFilter matches prefixed display names) — .agents/match/validations/tk-a6u-vitest-worktreegrouping.txt (commit 3e5430f61). (2) Touched-file suites green: labels/OverviewTable/SidebarResources/ResourceNameFilter/ResourceGroupsContext = 5 suites, 77/77 PASS — tk-a6u-vitest-touched-files.txt. (3) TS types regenerated & committed: web/src/core.d.ts contains KubernetesApplySpec.worktree?: string + LabelWorktree/AnnotationWorktree constants mirroring pkg/apis/core/v1alpha1 (register.go:47,53; kubernetesapply_types.go:208); re-ran tygo generate from worktree sources — output matches committed files with no semantic diff (formatting-only) — tk-a6u-codegen-ts-regen.txt. (4) tsc -p . --noEmit exit 0. (5) Diff hunk-by-hunk matches spec: ResourceGroups/Context + OverviewTableColumns badge + SidebarResources sections + ResourceNameFilter (landed in baseline ee0cfda53, which is master for this branch) + codegen commit 866d77d49 on branch tk-a6u. No go packages touched by this task; web-only.",
+      "created_at": "2026-09-02T12:41:34.739Z"
+    }
+  ],
+  "comment_count": 5
 }

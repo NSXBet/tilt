@@ -4,14 +4,14 @@
   "id": "tk-jxc",
   "title": "Tiltfile reconciler multi-tiltfile rewrite",
   "description": "",
-  "status": "open",
+  "status": "in_progress",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:20.089Z",
-  "updated_at": "2026-08-30T12:52:07.432Z",
+  "updated_at": "2026-09-02T09:27:01.218Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,10 +26,33 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-58b72ef4-eb29-4b78-b205-425b4bf30585",
+      "issue_id": "tk-jxc",
+      "author": "yuri",
+      "text": "SPEC (from plan §7.3): Tiltfile reconciler multi-tiltfile rewrite — retire TODO(nick) at internal/controllers/core/tiltfile/reconciler.go:365. Per-worktree TiltfileLoadResult -> engine-prefix rewrite (internal/tiltfile/worktree/prefix.go, tk-ntx) -> updateOwnedObjects -> ConfigsReloadedAction{Name: 'tiltfile:<wt>'}. Each worktree run is its own starkit Environment (fresh load per BuildEntry, reconciler.go:317) with worktree context injected. Deps on existing tasks: tk-jq8 (CRs must exist first) — coordinate via board; read its code once merged, do not implement CR creation here. Acceptance: two worktree CRs -> two separate load results -> two ConfigsReloadedActions; main CR unchanged; go test ./internal/controllers/core/tiltfile/... green.",
+      "created_at": "2026-09-01T03:05:35.019Z"
+    },
+    {
+      "id": "comment-3ad72c33-3ee1-496b-a7ee-4a98ffb67ae3",
+      "issue_id": "tk-jxc",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:37.170Z"
+    },
+    {
+      "id": "comment-d7436242-8ccf-4034-ac71-ed46f453416d",
+      "issue_id": "tk-jxc",
+      "author": "yuri",
+      "text": "COACH: worker session torn down mid-run; WIP salvaged as 4d51a8977 (build green; worktree pkg tests flaky on disk pressure, unrelated). Branch advanced. A round-3 worker should review the salvaged state, finish remaining acceptance (ConfigsReloadedAction per worktree), and flag ready-to-review.",
+      "created_at": "2026-09-02T09:27:01.218Z"
+    }
+  ],
+  "comment_count": 3
 }

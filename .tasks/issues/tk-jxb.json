@@ -4,14 +4,14 @@
   "id": "tk-jxb",
   "title": "Clone stamping: workload + selector + annotation|Stamp clone of parsed Deployment/StatefulSet per plan 4.2: name + -wt-<name> suffix, label worktree=<name> in pod template AND selector (deliberate — clone must not match stable Service), annotation tilt.dev/worktree=<name>. Stable untouched — additive siblings. Unit tests on chart-shaped YAML (matchLabels collisions, incidents-admin app:postgres style).",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:58.887Z",
-  "updated_at": "2026-08-30T12:52:07.323Z",
+  "updated_at": "2026-09-02T13:21:31.131Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,6 +26,7 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [
     {
@@ -39,6 +40,35 @@
   ],
   "dependency_count": 1,
   "dependent_count": 1,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-feee5665-4317-422d-8b13-2fa48fb8ab21",
+      "issue_id": "tk-jxb",
+      "author": "yuri",
+      "text": "SPEC (from plan §4.2): Stamp clone of parsed Deployment/StatefulSet per plan 4.2: name + -wt-<name> suffix, label worktree=<name> in pod template AND selector (deliberate — clone must not match stable Service), annotation tilt.dev/worktree=<name>. Stable untouched — additive siblings. Unit tests on chart-shaped YAML (matchLabels collisions, incidents-admin app:postgres style). Test file exists: internal/controllers/core/kubernetesapply/worktree_clone_test.go (2/3 red per striker:3 — apply + applycmd paths, no mutation stage; the STAGE wiring is tk-mzx's, in a separate worktree — implement the pure stamping functions + selectors here and keep the reconciler stage a thin call so both worktrees converge at merge). Acceptance: stamping unit tests green incl. selector-mutation + matchLabels collision cases; go test ./internal/controllers/core/kubernetesapply/... green for stamping tests.",
+      "created_at": "2026-09-01T03:05:59.547Z"
+    },
+    {
+      "id": "comment-1fb40a14-9427-4d1d-8342-73019fb5e667",
+      "issue_id": "tk-jxb",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-jxb but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:53.097Z"
+    },
+    {
+      "id": "comment-c28e0540-6ba4-464e-b602-9883257fa437",
+      "issue_id": "tk-jxb",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:49.469Z"
+    },
+    {
+      "id": "comment-d783c934-fd32-4c51-bcc6-03b7764e52e2",
+      "issue_id": "tk-jxb",
+      "author": "yuri",
+      "text": "APPROVED: (1) Clone contract verified in code + tests — stampWorkloadClone sets name <name>-wt-<worktree>, label worktree=<name> in pod template AND selector (deliberate, clone cannot match stable Service), annotation tilt.dev/worktree; stable entities pass through unmutated (additive siblings); ConfigMap/Secrets shared, never cloned. (2) Stamping unit tests green incl. selector-mutation + matchLabels collision cases: TestWorktreeCloneStamping PASS — chart-shaped YAML (2 Deployments + Service all sharing app:sancho, incidents-admin style) yields 4 Deployments (stable+clone each), exactly ONE clone Service with selector {app:sancho,worktree:feat-auth}, stable Service selector untouched {app:sancho}, ConfigMap never cloned. TestWorktreeCloneStamping_ApplyCmdPath PASS (apply-cmd stdout path produces stable+clone). TestWorktreeCloneStamping_MainRunNoop PASS (Worktree=='' is a no-op, classic behavior). Evidence-of-record rerun ok 1.364s; corroborating pre-pressure full package suite ok 26.848s; go build + go vet clean. (3) Diff review: worktree_clone.go changes are sound (subset-direction Service match on pod-template labels, server-field scrubbing uid/RV/creationTimestamp/generation/status/clusterIP/nodePorts before re-create, clone-Services-before-clones ordering); reconciler.go stamps in createEntitiesToDeploy after all injections gated on spec.Worktree, ApplyCmd path upserts full set with timeout default preserved, GC DeleteCmd path now explicitly deletes Tilt-applied worktree clones via AnnotationWorktree filter (consumed by bestEffortDelete → k8sClient.Delete). Evidence: .agents/match/validations/tk-jxb-tests.txt committed @ 599007749. Mid-session go failures were disk-pressure env failures (documented across validator fleet), not code failures.",
+      "created_at": "2026-09-02T13:21:21.232Z"
+    }
+  ],
+  "comment_count": 4
 }

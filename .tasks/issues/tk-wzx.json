@@ -4,14 +4,14 @@
   "id": "tk-wzx",
   "title": "worktree.name()/dir()/shared() builtins",
   "description": "",
-  "status": "open",
+  "status": "approved",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:19.680Z",
-  "updated_at": "2026-08-31T11:25:50.861Z",
+  "updated_at": "2026-09-02T13:25:54.506Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -38,7 +38,42 @@
       "author": "yuri",
       "text": "striker:3 scoped re-verify per referee: MY slice all green — go test ./internal/tiltfile/worktree/ -count=1 → ok 41/41 (builtins 7: name-main-empty, name+dir-wt-run, shared×3, config parse/defaults; reexec 4 incl. isolation; discover 9; prefix 9; combine 11). go test ./internal/tiltfile/ -run TestWorktreeConfig → ok 3/3 (load-result plumbing). go build ./... OK; go vet + gofmt clean. SIBLING reds (not mine): kubernetesapply clone stamping 2/3 fail (apply + applycmd paths, no mutation stage) = tk-jxb/tk-mzx; engine/configs TestCreateTiltfile_Worktrees fail = tk-jq8; internal/build TestCanReuseRef_WorktreeTagDistinctFromMain fail (fake client: wt tag not in store, reuse-check wiring) = tk-7gg; hud/server gateway 2 fail = tk-x4j; web WorktreeGrouping 3/10 fail (badge col + sidebar sections + prefixed group heading unimplemented; labels.ts+OverviewTable cell-model green) = tk-a6u. Note: transient TestCombine_WorktreeDefinitionWins red early in run was a concurrent sibling edit to validate.go (mtime 08:13) — stable across count=1 and count=5 reruns.",
       "created_at": "2026-08-31T11:25:50.861Z"
+    },
+    {
+      "id": "comment-6819a391-7985-45eb-b620-a230468cb283",
+      "issue_id": "tk-wzx",
+      "author": "yuri",
+      "text": "SPEC (from plan §3/§7.1): worktree.name() returns '' in main run, worktree name (e.g. feat-auth) in worktree re-execution. worktree.dir() returns the worktree cwd (main: repo root). worktree.shared(name) marks/queries shared resources (§3 shared-hack inheritance: main-defined local_resources visible to worktree deps via dep resolution, same-worktree first, else main). Injection via starkit thread local on per-run Environment (environment.go SetWorktree mirroring SetContext; read via t.Local like os.getcwd reads AbsWorkingDir). Path re-rooting for worktree runs REQUIRED: execingTiltfileKey set to synthetic <worktree>/Tiltfile so docker_build('.')/sync()/local() resolve in worktree cwd with ZERO path edits in user Tiltfiles (plan §0 amendment). Per-run Environments keep contexts from leaking (fresh load per BuildEntry, reconciler.go:317). Existing impl in internal/tiltfile/worktree/worktree.go + state.go, 41/41 tests green per striker:3. Acceptance: your existing test battery stays green; complete any gaps between builtins and plan surface (shared() semantics); go test ./internal/tiltfile/... green.",
+      "created_at": "2026-09-01T03:05:34.478Z"
+    },
+    {
+      "id": "comment-ed6ad1bf-4a83-44de-85ac-7e40e02d96f5",
+      "issue_id": "tk-wzx",
+      "author": "yuri",
+      "text": "COACH: prior worker session produced no work (died before starting or died before first write; worktree clean at baseline ee0cfda53). SPEC comment above is your brief. Retry with tighter scope: implement, test, commit, flag ready-to-review.",
+      "created_at": "2026-09-02T01:16:36.509Z"
+    },
+    {
+      "id": "comment-0579f5dd-ddc0-4cf2-8bd7-c041098f79f9",
+      "issue_id": "tk-wzx",
+      "author": "yuri",
+      "text": "COACH: worker finished with commits on branch tk-wzx but session was torn down before flagging. Work harvested; proceeding to validation. Worker does not need to respawn.",
+      "created_at": "2026-09-02T09:26:51.482Z"
+    },
+    {
+      "id": "comment-7979a3c0-41ae-49d1-924e-fa5b949da70a",
+      "issue_id": "tk-wzx",
+      "author": "yuri",
+      "text": "COACH: validation evidence collected. Validator spawning next.",
+      "created_at": "2026-09-02T12:19:48.746Z"
+    },
+    {
+      "id": "comment-b3d7eee1-0ea6-4d8c-b3da-af6816d3758e",
+      "issue_id": "tk-wzx",
+      "author": "yuri",
+      "text": "APPROVED: Evidence committed at e82f9cdac (.agents/match/validations/tk-wzx-tests.txt). Scope reviewed: single commit f50ef312e 'fork: tighten worktree.shared() semantics' — the SPEC acceptance gap 'shared() semantics'. (1) worktree.shared(name) main-run gate: code change starlark.Bool(p.name != \\\\ && p.shared[name]) — main run (name()==\\\\) never shares even if a set was miswired via WithShared; proven by new test TestWorktreeShared_MainRunIgnoresSuppliedSet PASS. (2) Empty name errors: new fmt.Errorf check 'name must be non-empty' — proven by new test TestWorktreeShared_EmptyNameErrors PASS. (3) Battery green: full ./internal/tiltfile/worktree/ 43/43 PASS (-count=1, incl. discover 9, prefix 11, reexec 4 incl. isolation, combine 11, builtins 8) — no regressions from the gate change (TestWorktreeShared_WorktreeRun True/True/False and TestWorktreeShared_MainRunFalse still PASS). (4) Load-result plumbing green: ./internal/tiltfile/ -run TestWorktreeConfig 3/3 PASS (LoadResultDefaults, LoadResultOverrides, WorktreeRunContext). (5) go vet + gofmt clean. Env note: several parent-package runs died ENOSPC during a host disk-pressure window (shared go-build cache purge races) — env failures, not code; final green runs executed under Main's serialized protocol with private GOCACHE. Diff reviewed hunk-by-hunk: no unrelated changes, comments updated to match new semantics, no cutover gaps (WithShared callers unchanged). Verdict: APPROVED.",
+      "created_at": "2026-09-02T13:25:54.201Z"
     }
   ],
-  "comment_count": 1
+  "comment_count": 6
 }
