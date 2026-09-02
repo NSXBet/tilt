@@ -91,6 +91,42 @@ func TestWithoutRegistry(t *testing.T) {
 	assert.Equal(t, "foo", FamiliarString(refs.WithoutRegistry().LocalRef()))
 }
 
+func TestWorktreeTagSuffix(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		worktree string
+		expected string
+	}{
+		{"plain name", "feat-auth", "-wt-feat-auth"},
+		{"spaces and plus escape", "feat+x auth", "-wt-feat_x_auth"},
+		{"non-ascii escapes", "café-branch", "-wt-caf_-branch"},
+		{"leading dot trimmed", ".tmp-main", "-wt-tmp-main"},
+		{"leading dash trimmed", "-tmp", "-wt-tmp"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token, err := WorktreeTagSuffix(tc.worktree)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, token)
+		})
+	}
+}
+
+func TestWorktreeTagSuffix_EmptyNameErrors(t *testing.T) {
+	_, err := WorktreeTagSuffix("")
+	require.Error(t, err)
+}
+
+// The composed tag must round-trip through reference.WithTag for any
+// worktree name a directory basename can produce.
+func TestAddTagSuffix_WorktreeTokenRoundTrip(t *testing.T) {
+	for _, name := range []string{"feat-auth", "feat+x auth", "café-branch", ".tmp-main", "-tmp"} {
+		refs := MustSimpleRefSet(MustParseSelector("gcr.io/foo/api")).WithWorktree(name)
+		tagged, err := refs.AddTagSuffix("tilt-d34db33f")
+		require.NoErrorf(t, err, "worktree name %q must escape into a valid tag", name)
+		assert.Containsf(t, tagged.LocalRef.String(), ":tilt-d34db33f-wt-", "token stays appended after base suffix (name %q)", name)
+	}
+}
+
 func assertNewRefSetError(t *testing.T, selector RefSelector, reg *v1alpha1.RegistryHosting, expectedErr string) {
 	t.Helper()
 	_, err := NewRefSet(selector, reg)
