@@ -1,0 +1,114 @@
+# Validation evidence — tk-71n (Engine-prefix rewrite pass / double-define + cross-worktree validation)
+
+Validator: Validator71n
+Date: 2026-09-02
+Worktree: /Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-71n (branch tk-71n)
+Task commit: afdb3916d "test(worktree): close double-define and cross-worktree validation gaps (tk-71n)"
+Baseline: ee0cfda53 (merge-base with master)
+
+## Scope of the commit under review
+
+git diff master..HEAD --stat:
+  internal/tiltfile/worktree/validate_test.go | 58 ++++++++  (4 net-new tests)
+  internal/tiltfile/worktree/worktree_test.go | 16 +++      (1 net-new test)
+
+Tests-only commit. The implementation it tests (validate.go Combine, prefix.go applyPrefix,
+discover.go Discover, worktree.go worktree_config) pre-exists at baseline ee0cfda53 and was
+verified by code reading against plan §3 Validation rules.
+
+## SPEC rule → implementation → test mapping (plan §3 "Validation (loader, cross-Tiltfile pass)")
+
+Rule 1 — worktree=True resource defined in main run → cloned per worktree; if same name ALSO
+defined by worktree run → one definition wins (worktree's), other errors as double-define.
+  Impl: validate.go Combine — shared (main-defined) manifests flow bare through worktree runs;
+  the worktree's definition REPLACES main's copy (`combined[mainIdx[m.Name]] = m`); a second
+  worktree redefining the same shared name errors:
+  `shared manifest "api" defined twice: worktrees "feat-auth" and "fix-ui" both redefine it`
+  (names the resource + both defining worktrees — actionable, per SPEC).
+  Tests:
+    - TestCombine_WorktreeDefinitionWins          (baseline; winner appears exactly once)
+    - TestCombine_SharedRedefinedByTwoWorktrees   (NEW; double-define error arm)
+    - TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees (NEW; composition: winner's deps
+      rewrite to its clones, dependent worktree's dep stays bare → resolves to the winner)
+
+Rule 2 — resource depended on by two worktrees and defined in neither's run → resolves to
+main's (shared).
+  Tests:
+    - TestCombine_ResourceDependedByTwoWorktreesSharedFromMain (baseline)
+    - TestCombine_SharedAndCloneDeps               (baseline)
+    - TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees (NEW; dep-on-winner stays bare)
+
+Rule 3 — dir missing/empty → no worktrees, classic behavior.
+  Impl: discover.go Discover returns nil,nil when the worktree dir does not exist;
+  empty subdir → no worktrees; worktree.go worktreeConfig keeps the ".worktree" default when
+  dir="" is passed (`if dir.Value != ""`); upper.go gates discovery on worktreesEnabled.
+  Tests:
+    - TestDiscover_NoWorktreeDir / TestDiscover_EmptyWorktreeDir (baseline)
+    - TestWorktreeConfig_EmptyDirKeepsDefault      (NEW; starkit fixture: dir="" keeps
+      ".worktree" default, sibling gateway=False override still applies)
+
+Rule 4 — two worktrees with the same basename → load error.
+  Impl: discover.go rejects a subdir named "main" (the one same-basename collision reachable
+  via position-based discovery in a single flat dir); validate.go Combine errors
+  `two worktrees named "feat-auth"; rename one` over assembled results.
+  Tests:
+    - TestCombine_DuplicateWorktreeName            (baseline)
+    - discover_test.go same-basename test          (baseline)
+
+Additional error arms covered by the commit:
+    - TestCombine_CloneNameCollidesWithMain (NEW): clone name `wt:<wt>/<name>` colliding with
+      a main-defined manifest errors.
+    - TestCombine_WorktreeRunNoName (NEW): unnamed run errors.
+
+## Test runs (evidence of record)
+
+1) Targeted package (clean run, pre-cache-pressure):
+   $ go test ./internal/tiltfile/worktree/ -count=1 -v
+   40/40 tests PASS, incl. all 5 net-new tests of this commit:
+     TestCombine_SharedRedefinedByTwoWorktrees PASS
+     TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees PASS
+     TestCombine_CloneNameCollidesWithMain PASS
+     TestCombine_WorktreeRunNoName PASS
+     TestWorktreeConfig_EmptyDirKeepsDefault PASS
+   ok  github.com/tilt-dev/tilt/internal/tiltfile/worktree 10.370s
+
+2) vet/gofmt/build of touched packages:
+   $ go vet ./internal/tiltfile/worktree/   → clean
+   $ gofmt -l internal/tiltfile/worktree/   → no output
+   $ go build ./internal/tiltfile/worktree/ ./internal/engine/ → clean
+
+3) SPEC acceptance suite, full run 2026-09-02 10:16 local (warm private GOCACHE +
+   GOTMPDIR after 6 earlier ENOSPC env casualties; see infra note):
+   $ go test ./internal/tiltfile/... -count=1
+   30/31 packages ok, including:
+     ok  github.com/tilt-dev/tilt/internal/tiltfile/worktree 9.582s
+     ok  github.com/tilt-dev/tilt/internal/tiltfile/starkit 1.045s
+     ok  github.com/tilt-dev/tilt/internal/tiltfile/config 8.257s
+     (+ analytics, cisettings, dockerprune, encoding, git, hasher, include, io, k8scontext,
+        links, loaddynamic, metrics, os, print, probe, shlex, starlarkstruct, sys,
+        telemetry, tiltextension, v1alpha1, value, version, watch — all ok)
+   The single FAIL is internal/tiltfile itself; rerun of that package alone identifies
+   exactly two failing tests:
+     --- FAIL: TestKustomizeFlags
+     --- FAIL: TestKustomizeBin
+   Both are the DOCUMENTED BASELINE env failure: the standalone `kustomize` binary is not
+   on PATH on this machine (kubectl's embedded kustomize does not count). Verified failing
+   identically on the main checkout at master (ValidatorN6q) and pre-declared out of scope
+   by the tk-mxh referee record ("Pre-existing env failures (kustomize binary)"). Not caused
+   by this work: the commit touches only internal/tiltfile/worktree test files.
+
+## Infra note (environment, not code)
+
+Six earlier suite attempts (bg_190, bg_197, bg_20, bg_47 first attempt, plus Ja0/Hd5 runs)
+died with ENOSPC while ~12 agents ran cold go builds concurrently on one APFS volume
+(errors: "mkdir /var/folders/.../go-buildNNN: no space left on device" / "link: cannot open
+file .../go-build/...-d"). All were re-run under Main's hard-serialization protocol with
+per-agent private GOCACHE + GOTMPDIR; run (3) above is the definitive result. The known-flaky
+internal/engine 5.23s-timeout quartet is not touched by this task and was not run.
+
+## Verdict
+
+All four SPEC rules are implemented and now table-driven tested; error messages name the
+resource and the two defining worktrees (rule 1's double-define arm); the SPEC acceptance
+command `go test ./internal/tiltfile/...` is green modulo the two documented kustomize-binary
+baseline failures. APPROVED.
