@@ -1,0 +1,95 @@
+POST-MERGE VALIDATION — tk-7m3 (Ingress clones for worktree-flagged workloads)
+Date: 2026-09-02
+Repo: /Users/yuri/Workdir/Nsx/tilt (master)
+Validated by: PM2 (post-merge validator)
+
+HEAD CHECK
+----------
+git log --oneline -1 -> 2dd4ff533 merge: tk-7m3 — clone Ingress resources for worktree-flagged workloads
+  [matches expected merge commit; parent bc49b598e = tk-zkx postmerge evidence commit]
+git rev-parse HEAD -> 2dd4ff533a9e2dbb7f6286839e1c3708cef7ca3f
+
+ENVIRONMENT
+-----------
+GOCACHE=$HOME/.cache/go-build-val-pm2 (private, per assignment)
+go version go1.26.5 darwin/arm64; tests run from repo root, master checkout.
+
+RESULTS — ALL FUNCTIONAL CHECKS FAIL (single root cause: compile break)
+-----------------------------------------------------------------------
+1) Full package:
+   GOCACHE=~/.cache/go-build-val-pm2 go test ./internal/controllers/core/kubernetesapply/ -count=1
+   -> FAIL [build failed] (exit 1)
+      worktree_clone.go:258:2   undefined: out
+      worktree_clone.go:258:15  undefined: out
+      worktree_clone.go:259:22  undefined: out
+
+2) Worktree tests:
+   GOCACHE=~/.cache/go-build-val-pm2 go test .../kubernetesapply/ -count=1 -run 'TestWorktree' -v
+   -> FAIL [build failed] (exit 1). Zero tests ran — the package does not compile,
+      so stamping / sibling-DNS / ingress-clone behaviors are UNVERIFIED on master.
+      Intended test set (from worktree_clone_test.go): TestWorktreeCloneStamping,
+      TestWorktreeCloneStamping_ApplyCmdPath, TestWorktreeCloneStamping_MainRunNoop,
+      TestWorktreeSiblingDNSRewrite, TestWorktreeSiblingDNSRewrite_Args,
+      TestWorktreeIngressClone, TestWorktreeSiblingDNSRewrite_StableUntouched.
+
+3) Full build:
+   GOCACHE=~/.cache/go-build-val-pm2 go build ./...  (exit 1)
+   Only errors are the three `undefined: out` above; cli/down.go's WorktreeClones
+   caller (deleteWorktreeClones, plan §9.1 `tilt down`) is transitively blocked.
+   go vet on the package fails identically: worktree_clone.go:258:15: undefined: out.
+
+ROOT CAUSE (merge botch, not environmental)
+-------------------------------------------
+Branch tip ee69ab21d accumulated stable+clones in ONE slice named `out` and
+returned it; the Ingress block (worktree_clone.go, "Route clones (plan §4.2
+step 4)") read/wrote `out` and called cloneIngresses(out, ...) /
+clonedServiceNames(out, ...).
+
+The merge commit 2dd4ff533 refactored WorktreeClones to return ONLY clones
+(accumulator renamed `clones`; stampWorktreeClones now wraps it and re-adds
+stable entities; sibling-DNS rewrite switched to a fresh `stamped` slice) —
+but pasted the branch's Ingress block in VERBATIM, still referencing `out`:
+
+    // worktree_clone.go:257-260 (as merged)
+    suffix := worktreeCloneSuffix(worktree)
+    out = append(out, cloneIngresses(out, suffix, worktree,
+        clonedServiceNames(out, suffix, worktree))...)
+
+`out` no longer exists in scope -> package does not compile. Pre-merge master
+(bc49b598e / 2dd4ff533^1) has no Ingress block and no `out` in WorktreeClones;
+the regression is introduced by this merge. Classification: INTEGRATION BUG
+(botched merge resolution). The branch-only run (ee69ab21d + 7138e8d32) was
+valid because that tree compiled; the merged tree does not.
+
+FIX (rework order for the Coach/next worker — one mechanical resolution)
+------------------------------------------------------------------------
+In WorktreeClones (internal/controllers/core/kubernetesapply/worktree_clone.go),
+build the fully stamped set BEFORE the Ingress block and append the ingress
+clones to the `clones` accumulator, then rewrite sibling refs over that set:
+
+    suffix := worktreeCloneSuffix(worktree)
+    stamped := make([]k8s.K8sEntity, 0, len(entities)+len(clones))
+    stamped = append(stamped, entities...)
+    stamped = append(stamped, clones...)
+    clones = append(clones, cloneIngresses(stamped, suffix, worktree,
+        clonedServiceNames(stamped, suffix, worktree))...)
+    rewriteSiblingRefs(stamped, worktree)   // then the existing block
+
+...replacing BOTH the current `out = append(...)` block AND the separately
+constructed `stamped` below it (avoid duplicate construction). Semantics check
+against branch intent: cloneIngresses scans ALL entities (stable + clones) for
+Ingresses whose backends point at cloned Services — passing `stamped` (not
+`clones` alone) preserves the branch behavior; ingress clones land in the
+return value so stampWorktreeClones and `tilt down` both see them. Watch the
+existing TestWorktreeIngressClone + TestWorktreeSiblingDNSRewrite suites to
+confirm.
+
+VERDICT
+-------
+FAILED — no integration regression vs the branch-only run can be PROVEN; the
+merge itself broke the build (worktree_clone.go:258 undefined `out`), failing
+every functional acceptance check (package tests, worktree tests, go build).
+Known-baseline exclusions (no docker daemon, no kustomize binary) are moot —
+nothing compiles far enough to reach them. Evidence of failure state:
+go build/vet/test outputs above; merge introduced the break (git show
+2dd4ff533^1 vs ee69ab21d comparison on file). REJECTED: route rework.
