@@ -79,9 +79,26 @@ func TestRegistryAllocatesDistinctPortsPerForward(t *testing.T) {
 	})
 	f.Create(pf)
 
-	portWeb := requireAllocatedPort(t, f, "pf-wtc-both", 20100, 20110)
-	portDB := requireAllocatedPort(t, f, "pf-wtc-both", 20100, 20110)
-	require.NotEqual(t, portWeb, portDB,
+	var ports []int32
+	require.Eventually(t, func() bool {
+		var pfOut PortForward
+		if !f.Get(types.NamespacedName{Name: "pf-wtc-both"}, &pfOut) {
+			return false
+		}
+		ports = ports[:0]
+		for _, s := range pfOut.Status.ForwardStatuses {
+			if s.Error != "" || s.StartedAt.IsZero() {
+				return false
+			}
+			if int(s.LocalPort) < 20100 || int(s.LocalPort) > 20110 {
+				return false
+			}
+			ports = append(ports, s.LocalPort)
+		}
+		return len(ports) == 2
+	}, 2*time.Second, 20*time.Millisecond,
+		"both forwards never reported started statuses with LocalPort in [20100,20110]")
+	require.NotEqual(t, ports[0], ports[1],
 		"two forwards of one worktree resource must get distinct local ports")
 }
 

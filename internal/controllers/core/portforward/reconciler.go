@@ -2,6 +2,7 @@ package portforward
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/tilt-dev/tilt/internal/k8s"
+	"github.com/tilt-dev/tilt/internal/portregistry"
 	"github.com/tilt-dev/tilt/internal/store"
 )
 
@@ -135,15 +137,15 @@ func (r *Reconciler) reconcile(ctx context.Context, name types.NamespacedName) e
 		// Treat port-forwarding errors as part of the pod log
 		ctx = store.MustObjectLogHandler(entry.ctx, r.store, pf)
 
-		for _, forward := range entry.spec.Forwards {
-			go r.portForwardLoop(ctx, entry, forward)
+		for i, forward := range entry.spec.Forwards {
+			go r.portForwardLoop(ctx, entry, i, forward)
 		}
 	}
 
 	return r.maybeUpdateStatus(ctx, pf, r.activeForwards[name])
 }
 
-func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntry, forward Forward) {
+func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntry, index int, forward Forward) {
 	originalBackoff := wait.Backoff{
 		Steps:    1000,
 		Duration: 50 * time.Millisecond,
@@ -155,7 +157,7 @@ func (r *Reconciler) portForwardLoop(ctx context.Context, entry *portForwardEntr
 
 	for {
 		start := time.Now()
-		r.onePortForward(ctx, entry, forward)
+		r.onePortForward(ctx, entry, index, forward)
 		if ctx.Err() != nil {
 			// If the context was canceled, there's nothing more to do;
 			// we cannot even update the status because we no longer have
@@ -186,24 +188,47 @@ func (r *Reconciler) maybeUpdateStatus(ctx context.Context, pf *v1alpha1.PortFor
 	return client.IgnoreNotFound(r.ctrlClient.Status().Update(ctx, update))
 }
 
-func (r *Reconciler) onePortForward(ctx context.Context, entry *portForwardEntry, forward Forward) {
+func (r *Reconciler) onePortForward(ctx context.Context, entry *portForwardEntry, index int, forward Forward) {
 	logError := func(err error) {
 		logger.Get(ctx).Infof("Reconnecting... Error port-forwarding %s (%d -> %d): %v",
 			entry.meta.Annotations[v1alpha1.AnnotationManifest],
 			forward.LocalPort, forward.ContainerPort, err)
 	}
 
+	localPort := int(forward.LocalPort)
+	if localPort == 0 {
+		// The worktree port registry hands out stable ports across Tiltfile
+		// reloads (owner = PortForward object + forward index, so a spec
+		// change that recreates the forward keeps its port). With no range
+		// configured it falls back to the OS, matching getAvailablePort.
+		// Allocation failure surfaces as a forward error, like any other
+		// CreatePortForwarder failure.
+		port, err := portregistry.Allocate(
+			fmt.Sprintf("%s/%s#%d", entry.name.Namespace, entry.name.Name, index), 0)
+		if err != nil {
+			logError(err)
+			entry.setStatus(forward, ForwardStatus{
+				LocalPort:     forward.LocalPort,
+				ContainerPort: forward.ContainerPort,
+				Error:         err.Error(),
+			})
+			r.requeuer.Add(entry.name)
+			return
+		}
+		localPort = port
+	}
+
 	pf, err := entry.client.CreatePortForwarder(
 		ctx,
 		k8s.Namespace(entry.spec.Namespace),
 		k8s.PodID(entry.spec.PodName),
-		int(forward.LocalPort),
+		localPort,
 		int(forward.ContainerPort),
 		forward.Host)
 	if err != nil {
 		logError(err)
 		entry.setStatus(forward, ForwardStatus{
-			LocalPort:     forward.LocalPort,
+			LocalPort:     int32(localPort),
 			ContainerPort: forward.ContainerPort,
 			Error:         err.Error(),
 		})
