@@ -1,0 +1,186 @@
+PASS src/labels.test.ts (12.722 s)
+PASS src/SidebarResources.test.tsx
+  ● Console
+
+    console.error
+      Warning: findDOMNode is deprecated and will be removed in the next major release. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://reactjs.org/link/strict-mode-find-node
+          at svg
+          at SvgInfo
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at Tooltip (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Tooltip/Tooltip.js:214:28)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at TiltTooltip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/Tooltip.tsx:41:19)
+          at TiltInfoTooltip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/Tooltip.tsx:92:11)
+          at aside
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at ResourceGroupsInfoTip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceGroups.tsx:137:26)
+          at nav
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at SidebarResources (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/SidebarResources.tsx:487:5)
+          at ResourceListOptionsProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceListOptionsContext.tsx:57:40)
+          at ResourceGroupsContextProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceGroupsContext.tsx:43:40)
+          at StarredResourcesContextProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/StarredResourcesContext.tsx:75:11)
+          at Router (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:421:13)
+          at MemoryRouter (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:225:3)
+          at wrapper (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/SidebarResources.test.tsx:78:19)
+
+      67 |   })
+      68 |   const listOptions = componentOptions.resourceListOptions ?? DEFAULT_OPTIONS
+    > 69 |   return render(
+         |                ^
+      70 |     <SidebarResources
+      71 |       items={componentOptions.items}
+      72 |       selected={componentOptions.selected ?? ""}
+
+      at printWarning (../../../web/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../web/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at Object.findDOMNode (../../../web/node_modules/react-dom/cjs/react-dom.development.js:29666:7)
+      at ../../../web/node_modules/@material-ui/core/Tooltip/Tooltip.js:468:51
+      at setRef (../../../web/node_modules/@material-ui/core/utils/setRef.js:11:5)
+      at ../../../web/node_modules/@material-ui/core/utils/useForkRef.js:29:27
+      at commitAttachRef (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23689:18)
+      at commitLayoutEffectOnFiber (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23542:9)
+      at commitLayoutMountEffects_complete (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+      at commitLayoutEffects_begin (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+      at commitLayoutEffects (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24651:3)
+      at commitRootImpl (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26862:5)
+      at commitRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26721:5)
+      at finishConcurrentRender (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26020:9)
+      at performConcurrentWorkOnRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:25848:7)
+      at flushActQueue (../../../web/node_modules/react/cjs/react.development.js:2667:24)
+      at act (../../../web/node_modules/react/cjs/react.development.js:2582:11)
+      at ../../../web/node_modules/@testing-library/react/dist/act-compat.js:46:25
+      at renderRoot (../../../web/node_modules/@testing-library/react/dist/pure.js:189:26)
+      at render (../../../web/node_modules/@testing-library/react/dist/pure.js:291:10)
+      at customRender (src/SidebarResources.test.tsx:69:16)
+      at Object.<anonymous> (src/SidebarResources.test.tsx:116:7)
+
+PASS src/OverviewTable.test.tsx
+  ● Console
+
+    console.error
+      Warning: findDOMNode is deprecated and will be removed in the next major release. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://reactjs.org/link/strict-mode-find-node
+          at svg
+          at SvgInfo
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at Tooltip (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Tooltip/Tooltip.js:214:28)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at TiltTooltip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/Tooltip.tsx:41:19)
+          at TiltInfoTooltip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/Tooltip.tsx:92:11)
+          at aside
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at ResourceGroupsInfoTip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceGroups.tsx:137:26)
+          at OverviewTableContent (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/OverviewTable.tsx:879:31)
+          at section
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at OverviewTable
+          at ResourceSelectionProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceSelectionContext.tsx:47:36)
+          at ResourceListOptionsProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceListOptionsContext.tsx:57:40)
+          at ResourceGroupsContextProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceGroupsContext.tsx:43:40)
+          at SnackbarProvider (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/notistack/src/SnackbarProvider.tsx:30:9)
+          at Router (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:421:13)
+          at MemoryRouter (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:225:3)
+
+      115 |   ]
+      116 |
+    > 117 |   const { container } = render(tableViewWithSettings({ view }))
+          |                               ^
+      118 |
+      119 |   // buttons expected to be on each row, in order
+      120 |   const expectedButtons = [["text1"], ["text2", "text3"], []]
+
+      at printWarning (../../../web/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../web/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at Object.findDOMNode (../../../web/node_modules/react-dom/cjs/react-dom.development.js:29666:7)
+      at ../../../web/node_modules/@material-ui/core/Tooltip/Tooltip.js:468:51
+      at setRef (../../../web/node_modules/@material-ui/core/utils/setRef.js:11:5)
+      at ../../../web/node_modules/@material-ui/core/utils/useForkRef.js:29:27
+      at commitAttachRef (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23689:18)
+      at commitLayoutEffectOnFiber (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23542:9)
+      at commitLayoutMountEffects_complete (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+      at commitLayoutEffects_begin (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+      at commitLayoutEffects (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24651:3)
+      at commitRootImpl (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26862:5)
+      at commitRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26721:5)
+      at finishConcurrentRender (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26020:9)
+      at performConcurrentWorkOnRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:25848:7)
+      at flushActQueue (../../../web/node_modules/react/cjs/react.development.js:2667:24)
+      at act (../../../web/node_modules/react/cjs/react.development.js:2582:11)
+      at ../../../web/node_modules/@testing-library/react/dist/act-compat.js:46:25
+      at renderRoot (../../../web/node_modules/@testing-library/react/dist/pure.js:189:26)
+      at render (../../../web/node_modules/@testing-library/react/dist/pure.js:291:10)
+      at Object.<anonymous> (src/OverviewTable.test.tsx:117:31)
+
+PASS src/ResourceNameFilter.test.tsx
+  ● Console
+
+    console.error
+      Warning: findDOMNode is deprecated and will be removed in the next major release. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://reactjs.org/link/strict-mode-find-node
+          at button
+          at ButtonBase (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/ButtonBase/ButtonBase.js:94:22)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at Button (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Button/Button.js:313:24)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at InstrumentedButton (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/instrumentedComponents.tsx:23:11)
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at div
+          at InputAdornment (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/InputAdornment/InputAdornment.js:69:24)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at div
+          at InputBase (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/InputBase/InputBase.js:219:30)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at OutlinedInput (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/OutlinedInput/OutlinedInput.js:137:23)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at div
+          at FormControl (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/FormControl/FormControl.js:90:24)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at TextField (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/TextField/TextField.js:86:28)
+          at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+          at InstrumentedTextField (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/instrumentedComponents.tsx:51:11)
+          at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+          at ResourceNameFilter (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceNameFilter.tsx:78:29)
+          at ResourceListOptionsProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceListOptionsContext.tsx:57:40)
+          at Router (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:421:13)
+          at MemoryRouter (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:225:3)
+          at wrapper (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceNameFilter.test.tsx:21:17)
+
+      18 |
+      19 | function customRender(component: JSX.Element, options?: RenderOptions) {
+    > 20 |   return render(component, {
+         |                ^
+      21 |     wrapper: ({ children }) => (
+      22 |       <MemoryRouter
+      23 |         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+
+      at printWarning (../../../web/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../web/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at Object.findDOMNode (../../../web/node_modules/react-dom/cjs/react-dom.development.js:29666:7)
+      at ../../../web/node_modules/@material-ui/core/utils/useIsFocusVisible.js:151:25
+      at setRef (../../../web/node_modules/@material-ui/core/utils/setRef.js:11:5)
+      at ../../../web/node_modules/@material-ui/core/utils/useForkRef.js:28:27
+      at setRef (../../../web/node_modules/@material-ui/core/utils/setRef.js:11:5)
+      at ../../../web/node_modules/@material-ui/core/utils/useForkRef.js:29:27
+      at commitAttachRef (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23689:18)
+      at commitLayoutEffectOnFiber (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23542:9)
+      at commitLayoutMountEffects_complete (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+      at commitLayoutEffects_begin (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+      at commitLayoutEffects (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24651:3)
+      at commitRootImpl (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26862:5)
+      at commitRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26721:5)
+      at finishConcurrentRender (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26020:9)
+      at performConcurrentWorkOnRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:25848:7)
+      at flushActQueue (../../../web/node_modules/react/cjs/react.development.js:2667:24)
+      at act (../../../web/node_modules/react/cjs/react.development.js:2582:11)
+      at ../../../web/node_modules/@testing-library/react/dist/act-compat.js:46:25
+      at renderRoot (../../../web/node_modules/@testing-library/react/dist/pure.js:189:26)
+      at render (../../../web/node_modules/@testing-library/react/dist/pure.js:291:10)
+      at customRender (src/ResourceNameFilter.test.tsx:20:16)
+      at Object.<anonymous> (src/ResourceNameFilter.test.tsx:49:5)
+
+PASS src/ResourceGroupsContext.test.tsx
+
+Test Suites: 5 passed, 5 total
+Tests:       77 passed, 77 total
+Snapshots:   0 total
+Time:        22.37 s, estimated 75 s
+Ran all test suites matching /(labels|ResourceNameFilter|ResourceGroupsContext|SidebarResources|OverviewTable\b|OverviewTable\.)/i.

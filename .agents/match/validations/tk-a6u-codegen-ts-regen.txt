@@ -1,0 +1,66 @@
+tk-a6u validation evidence — TS codegen verification
+=====================================================
+Date: 2026-09-02
+Worktree: /Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u (branch tk-a6u, commit 866d77d49)
+Task: Web UI worktree grouping + regen TS types (make update-codegen-ts -> web/src/webview.d.ts)
+
+Acceptance criterion: "make update-codegen-ts committed if types changed"
+i.e. the committed web/src/core.d.ts must match what tygo generates from the
+worktree's Go sources (pkg/apis/core/v1alpha1).
+
+Procedure:
+1. Ran `tygo generate` in the worktree (tygo in PATH; same tool the Makefile
+   target installs). This regenerates web/src/core.d.ts + web/src/webview.d.ts.
+2. My local tygo emits slightly different prettier formatting (semicolons,
+   long-line wrapping, empty-interface style) than the version that produced
+   the committed files, so I compared content modulo formatting: stripped
+   trailing semicolons from regenned files and diffed against committed.
+3. Remaining differences are formatting-only (line wrapping of long const
+   declarations, `{ [key: string]: string}` inner spacing, empty interfaces).
+   NO semantic differences: no missing/extra fields or constants.
+
+Worktree fields present in committed web/src/core.d.ts (from HEAD):
+- KubernetesApplySpec.worktree?: string  (core.d.ts:1661, protobuf field 15)
+- export const LabelWorktree = "tilt.dev/worktree"  (core.d.ts:2906)
+- export const AnnotationWorktree = "tilt.dev/worktree"  (core.d.ts:2913)
+
+These mirror the Go sources exactly:
+- pkg/apis/core/v1alpha1/kubernetesapply_types.go:208 Worktree string field
+- pkg/apis/core/v1alpha1/register.go:47 LabelWorktree, :53 AnnotationWorktree
+
+web/src/webview.d.ts: no worktree-specific types needed (UIResource labels are
+carried via ObjectMeta.labels which already exists); committed webview.d.ts
+matches regenned modulo the same formatting-only differences.
+
+Codegen regeneration check: PASS (committed types are up to date with Go source).
+
+--------------------------------------------------------------------
+SUPPLEMENT — test runs (2026-09-02, worktree clean at 866d77d49)
+--------------------------------------------------------------------
+1. WorktreeGrouping suite (new file, task's primary deliverable):
+   CI=true npx react-scripts test --runInBand --testPathPattern="WorktreeGrouping"
+   PASS src/WorktreeGrouping.test.tsx
+   Tests: 10 passed, 10 total
+   (full output: tk-a6u-vitest-worktreegrouping.txt)
+
+2. Other suites covering files named in the spec (labels.ts,
+   OverviewTable[Columns], SidebarResources, ResourceNameFilter,
+   ResourceGroupsContext):
+   CI=true npx react-scripts test --runInBand --testPathPattern="(labels|ResourceNameFilter|ResourceGroupsContext|SidebarResources|OverviewTable\b|OverviewTable\.)"
+   PASS src/labels.test.ts
+   PASS src/SidebarResources.test.tsx
+   PASS src/OverviewTable.test.tsx
+   PASS src/ResourceNameFilter.test.tsx
+   PASS src/ResourceGroupsContext.test.tsx
+   Test Suites: 5 passed, 5 total
+   Tests:       77 passed, 77 total
+   (full output: tk-a6u-vitest-touched-files.txt)
+
+3. TypeScript compile of web/ (changed contract):
+   npx tsc -p . --noEmit  ->  exit 0, no errors
+
+Note: implementation code (OverviewTable.tsx, OverviewTableColumns.tsx,
+SidebarResources.tsx, SidebarItem.tsx, labels.ts + WorktreeGrouping.test.tsx)
+landed in the phase-1 baseline commit ee0cfda53 which is master's HEAD for
+this task's branch; tk-a6u's own commit 866d77d49 regenerates web/src/core.d.ts
+to match. Diff reviewed hunk-by-hunk against the spec comment.

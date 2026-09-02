@@ -1,0 +1,97 @@
+  console.error
+    Warning: findDOMNode is deprecated and will be removed in the next major release. Instead, add a ref directly to the element you want to reference. Learn more about using refs safely here: https://reactjs.org/link/strict-mode-find-node
+        at li
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at Tooltip (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Tooltip/Tooltip.js:214:28)
+        at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+        at TiltTooltip (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/Tooltip.tsx:41:19)
+        at ResourceGroupStatusItem (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceStatusSummary.tsx:111:65)
+        at ul
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at ResourceGroupStatus (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceStatusSummary.tsx:152:13)
+        at aside
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at ResourceStatusSummary (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceStatusSummary.tsx:450:32)
+        at TableGroupStatusSummary (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceStatusSummary.tsx:507:29)
+        at div
+        at div
+        at ButtonBase (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/ButtonBase/ButtonBase.js:94:22)
+        at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+        at AccordionSummary (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/AccordionSummary/AccordionSummary.js:100:24)
+        at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at div
+        at Paper (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Paper/Paper.js:55:23)
+        at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+        at Accordion (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/core/Accordion/Accordion.js:115:28)
+        at WithStyles (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/@material-ui/styles/withStyles/withStyles.js:67:31)
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at TableGroup (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/OverviewTable.tsx:744:11)
+        at TableGroupedByLabels (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/OverviewTable.tsx:775:3)
+        at OverviewTableContent (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/OverviewTable.tsx:879:31)
+        at section
+        at I (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/styled-components/src/models/StyledComponent.js:246:3)
+        at OverviewTable
+        at ResourceSelectionProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceSelectionContext.tsx:47:36)
+        at ResourceListOptionsProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceListOptionsContext.tsx:57:40)
+        at ResourceGroupsContextProvider (/Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-a6u/web/src/ResourceGroupsContext.tsx:43:40)
+        at SnackbarProvider (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/notistack/src/SnackbarProvider.tsx:30:9)
+        at Router (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:421:13)
+        at MemoryRouter (/Users/yuri/Workdir/Nsx/tilt/web/node_modules/react-router/lib/components.tsx:225:3)
+
+      108 |   options?: Partial<ResourceListOptions>
+      109 | ) {
+    > 110 |   return render(tableViewWithSettings({ view, resourceListOptions: options }))
+          |                ^
+      111 |     .container
+      112 | }
+      113 |
+
+      at printWarning (../../../web/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../web/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at Object.findDOMNode (../../../web/node_modules/react-dom/cjs/react-dom.development.js:29666:7)
+      at ../../../web/node_modules/@material-ui/core/Tooltip/Tooltip.js:468:51
+      at setRef (../../../web/node_modules/@material-ui/core/utils/setRef.js:11:5)
+      at ../../../web/node_modules/@material-ui/core/utils/useForkRef.js:29:27
+      at commitAttachRef (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23689:18)
+      at commitLayoutEffectOnFiber (../../../web/node_modules/react-dom/cjs/react-dom.development.js:23542:9)
+      at commitLayoutMountEffects_complete (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24727:9)
+      at commitLayoutEffects_begin (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24713:7)
+      at commitLayoutEffects (../../../web/node_modules/react-dom/cjs/react-dom.development.js:24651:3)
+      at commitRootImpl (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26862:5)
+      at commitRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26721:5)
+      at finishConcurrentRender (../../../web/node_modules/react-dom/cjs/react-dom.development.js:26020:9)
+      at performConcurrentWorkOnRoot (../../../web/node_modules/react-dom/cjs/react-dom.development.js:25848:7)
+      at flushActQueue (../../../web/node_modules/react/cjs/react.development.js:2667:24)
+      at act (../../../web/node_modules/react/cjs/react.development.js:2582:11)
+      at ../../../web/node_modules/@testing-library/react/dist/act-compat.js:46:25
+      at renderRoot (../../../web/node_modules/@testing-library/react/dist/pure.js:189:26)
+      at render (../../../web/node_modules/@testing-library/react/dist/pure.js:291:10)
+      at renderTable (src/WorktreeGrouping.test.tsx:110:16)
+      at Object.<anonymous> (src/WorktreeGrouping.test.tsx:121:23)
+      at TestScheduler.scheduleTests (../../../web/node_modules/@jest/core/build/TestScheduler.js:333:13)
+      at runJest (../../../web/node_modules/@jest/core/build/runJest.js:404:19)
+      at _run10000 (../../../web/node_modules/@jest/core/build/cli/index.js:320:7)
+      at runCLI (../../../web/node_modules/@jest/core/build/cli/index.js:173:3)
+
+PASS src/WorktreeGrouping.test.tsx
+  OverviewTable worktree grouping
+    ✓ renders a group section per worktree with its resources (135 ms)
+    ✓ groups resources by worktree in sorted order in the cell model (6 ms)
+    ✓ keeps main-run resources in the unlabeled bucket, not a worktree group
+    ✓ does not render a worktree group when no resource has the worktree label (12 ms)
+  OverviewTableColumns worktree badge
+    ✓ shows the worktree name as a badge on worktree resource rows (13 ms)
+    ✓ does not render a worktree badge on main-run resource rows (19 ms)
+  SidebarResources worktree sections
+    ✓ renders a section per worktree holding only that worktree's resources (69 ms)
+    ✓ does not render a worktree section when no resource is in a worktree (10 ms)
+  ResourceNameFilter worktree matching
+    ✓ matches prefixed worktree display names
+    ✓ filters the table to the named worktree's resources (9 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        10.806 s
+Ran all test suites matching /WorktreeGrouping/i.
