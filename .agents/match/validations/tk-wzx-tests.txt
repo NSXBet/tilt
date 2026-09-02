@@ -1,0 +1,117 @@
+=== tk-wzx validation evidence — 2026-09-02T13:25:21Z ===
+
+== Worktree == /Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-wzx
+== Commits (master..HEAD) ==
+f50ef312e fork: tighten worktree.shared() semantics — main run never shares, empty name errors
+
+== Diff stat (master..HEAD) ==
+ internal/tiltfile/worktree/worktree.go      | 18 +++++++++++++-----
+ internal/tiltfile/worktree/worktree_test.go | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 41 insertions(+), 5 deletions(-)
+
+== Test run 1: go test ./internal/tiltfile/worktree/ -count=1 -v (final confirm) ==
+=== RUN   TestDiscover_SkipsHiddenDirs
+--- PASS: TestDiscover_SkipsHiddenDirs (0.00s)
+=== RUN   TestDiscover_NoWorktreeDir
+--- PASS: TestDiscover_NoWorktreeDir (0.00s)
+=== RUN   TestDiscover_EmptyWorktreeDir
+--- PASS: TestDiscover_EmptyWorktreeDir (0.00s)
+=== RUN   TestDiscover_SubdirsWithTiltfile
+--- PASS: TestDiscover_SubdirsWithTiltfile (0.00s)
+=== RUN   TestDiscover_CustomDir
+--- PASS: TestDiscover_CustomDir (0.00s)
+=== RUN   TestDiscover_MainSubdirCollides
+--- PASS: TestDiscover_MainSubdirCollides (0.00s)
+=== RUN   TestDiscover_RealGitWorktreesAndPlainCheckouts
+--- PASS: TestDiscover_RealGitWorktreesAndPlainCheckouts (0.52s)
+=== RUN   TestDiscover_TiltfileContentIrrelevant
+--- PASS: TestDiscover_TiltfileContentIrrelevant (0.00s)
+=== RUN   TestDiscover_RequiresTiltfileInSubdirRoot
+--- PASS: TestDiscover_RequiresTiltfileInSubdirRoot (0.00s)
+=== RUN   TestApplyPrefix_ManifestAndDeps
+--- PASS: TestApplyPrefix_ManifestAndDeps (0.00s)
+=== RUN   TestApplyPrefix_CloneOfMainManifest
+--- PASS: TestApplyPrefix_CloneOfMainManifest (0.00s)
+=== RUN   TestApplyPrefix_SetsSourceTiltfile
+--- PASS: TestApplyPrefix_SetsSourceTiltfile (0.00s)
+=== RUN   TestApplyPrefix_UndefinedDepStaysBare
+--- PASS: TestApplyPrefix_UndefinedDepStaysBare (0.00s)
+=== RUN   TestApplyPrefix_SharedManifestKeepsBareNameWithSelfDep
+--- PASS: TestApplyPrefix_SharedManifestKeepsBareNameWithSelfDep (0.00s)
+=== RUN   TestApplyPrefix_MainRunNoop
+--- PASS: TestApplyPrefix_MainRunNoop (0.00s)
+=== RUN   TestApplyPrefix_NoInputMutation
+--- PASS: TestApplyPrefix_NoInputMutation (0.00s)
+=== RUN   TestApplyPrefix_OutputIndependentOfInput
+--- PASS: TestApplyPrefix_OutputIndependentOfInput (0.00s)
+=== RUN   TestApplyPrefix_DepRewriteMatrix
+--- PASS: TestApplyPrefix_DepRewriteMatrix (0.00s)
+=== RUN   TestApplyPrefix_NilDepsStaysNil
+--- PASS: TestApplyPrefix_NilDepsStaysNil (0.00s)
+=== RUN   TestReexec_MainRun_ClassicBehavior
+--- PASS: TestReexec_MainRun_ClassicBehavior (0.00s)
+=== RUN   TestReexec_WorktreeRun_NameAndDir
+--- PASS: TestReexec_WorktreeRun_NameAndDir (0.00s)
+=== RUN   TestReexec_WorktreeRun_PathRerooted
+--- PASS: TestReexec_WorktreeRun_PathRerooted (0.00s)
+=== RUN   TestReexec_Isolation_NoCrossWorktreeLeak
+--- PASS: TestReexec_Isolation_NoCrossWorktreeLeak (0.00s)
+=== RUN   TestCombine_SharedAndCloneDeps
+--- PASS: TestCombine_SharedAndCloneDeps (0.00s)
+=== RUN   TestCombine_DuplicateWorktreeName
+--- PASS: TestCombine_DuplicateWorktreeName (0.00s)
+=== RUN   TestCombine_DoubleDefineWithinRun
+--- PASS: TestCombine_DoubleDefineWithinRun (0.00s)
+=== RUN   TestCombine_SameNameAcrossWorktreesDistinctClones
+--- PASS: TestCombine_SameNameAcrossWorktreesDistinctClones (0.00s)
+=== RUN   TestCombine_WorktreeDefinitionWins
+--- PASS: TestCombine_WorktreeDefinitionWins (0.00s)
+=== RUN   TestCombine_CrossWorktreeDepError
+--- PASS: TestCombine_CrossWorktreeDepError (0.00s)
+=== RUN   TestCombine_UndefinedDepError
+--- PASS: TestCombine_UndefinedDepError (0.00s)
+=== RUN   TestCombine_OneWayDepViolation
+--- PASS: TestCombine_OneWayDepViolation (0.00s)
+=== RUN   TestCombine_ResourceDependedByTwoWorktreesSharedFromMain
+--- PASS: TestCombine_ResourceDependedByTwoWorktreesSharedFromMain (0.00s)
+=== RUN   TestCombine_NilMainStillValidates
+--- PASS: TestCombine_NilMainStillValidates (0.00s)
+=== RUN   TestCombine_NoWorktrees
+--- PASS: TestCombine_NoWorktrees (0.00s)
+=== RUN   TestWorktreeName_MainRunEmpty
+--- PASS: TestWorktreeName_MainRunEmpty (0.00s)
+=== RUN   TestWorktreeNameAndDir_WorktreeRun
+--- PASS: TestWorktreeNameAndDir_WorktreeRun (0.00s)
+=== RUN   TestWorktreeShared_WorktreeRun
+--- PASS: TestWorktreeShared_WorktreeRun (0.00s)
+=== RUN   TestWorktreeShared_MainRunFalse
+--- PASS: TestWorktreeShared_MainRunFalse (0.00s)
+=== RUN   TestWorktreeShared_MainRunIgnoresSuppliedSet
+--- PASS: TestWorktreeShared_MainRunIgnoresSuppliedSet (0.00s)
+=== RUN   TestWorktreeShared_EmptyNameErrors
+--- PASS: TestWorktreeShared_EmptyNameErrors (0.00s)
+=== RUN   TestWorktreeShared_RequiresName
+--- PASS: TestWorktreeShared_RequiresName (0.00s)
+=== RUN   TestWorktreeConfig_Parse
+--- PASS: TestWorktreeConfig_Parse (0.00s)
+=== RUN   TestWorktreeConfig_Defaults
+--- PASS: TestWorktreeConfig_Defaults (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/tiltfile/worktree	1.257s
+exit=0
+
+== Test run 2: GOCACHE=$HOME/.cache/go-build-wzx go test ./internal/tiltfile/ -count=1 -run TestWorktreeConfig -v ==
+=== RUN   TestWorktreeConfig_LoadResultDefaults
+--- PASS: TestWorktreeConfig_LoadResultDefaults (0.00s)
+=== RUN   TestWorktreeConfig_LoadResultOverrides
+--- PASS: TestWorktreeConfig_LoadResultOverrides (0.00s)
+=== RUN   TestWorktreeConfig_WorktreeRunContext
+--- PASS: TestWorktreeConfig_WorktreeRunContext (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/tiltfile	0.831s
+exit=0
+
+== go vet ./internal/tiltfile/worktree/ ==
+VET OK
+== gofmt -l internal/tiltfile/worktree/ ==
+(0 files — clean)
