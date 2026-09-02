@@ -1,0 +1,135 @@
+tk-jxc validation evidence (round 3) — commits 4d51a8977 + 0b41c2b6b + 622f697c4
+Validator run: 2026-09-02, worktree .worktrees/tk-jxc, branch tk-jxc
+Private GOCACHE: ~/.cache/go-build-val-jxc3
+Prior rounds: no prior validation pass existed (sessions died mid-run; commits harvested by Coach).
+Brief: plan .agents/drafts/multi-worktree-parallel.md section 3 + 7 (SPEC §7.3), task tk show tk-jxc.
+
+CRITERION -> EVIDENCE MAPPING
+=============================
+
+1. Hunk-by-hunk review of all three commits vs SPEC (§7.3 + hold-until-main lifecycle)
+   -> 4d51a8977 (reconciler multi-tiltfile rewrite, 5 files +489):
+      * TODO(nick): Rewrite to handle multiple tiltfiles. (old reconciler.go:365,
+        verified present in 4d51a8977^) REPLACED by multi-tiltfile handleLoaded +
+        helper set. No other "Rewrite to handle multiple tiltfiles" remains in tree.
+      * worktreeNameOf: CR label tilt.dev/worktree (pkg/apis/core/v1alpha1/register.go:47);
+        "" = main run. Main path byte-equivalent to upstream semantics (prefixRun passthrough,
+        same updateOwnedObjects + ConfigsReloadedAction dispatch, now via
+        updateAndDispatchOwnedObjects so replay can reuse it verbatim).
+      * Worktree path: park on !mainSettled -> heldWorktrees[nn]=true, run reports
+        Terminated (step=runStepDone, finishTime=now, TLR parked in run.tlr).
+        Otherwise: main := r.mainManifests(); tlr.Manifests = prefixRun(...) ->
+        worktree.RewriteRun (internal/tiltfile/worktree/prefix.go:87) -> names
+        wt:<worktree>/<name>, shared (main-defined) deps stay bare, own deps cloned,
+        nil main = conservative (prefix, deps untouched). KubernetesApplySpec.Worktree
+        stamped on manifests (worktree.go prefixRun) AND on tlr.ObjectSet builtin
+        KubernetesApply objects (stampWorktreeK8sApply; GetSetForType keyed by GVR so
+        the type assert is safe) BEFORE updateOwnedObjects persists them. Downstream
+        apply-time clone stamping keys on spec.Worktree
+        (kubernetesapply/reconciler.go:438,610 -> stampWorktreeClones) — chain verified.
+      * SourceTiltfile stamped tiltfile:<wt> on every rewritten manifest.
+      * ConfigsReloadedAction.Name = entry.Name = CR name -> tiltfile:<wt> per worktree.
+   -> 0b41c2b6b (test-only): Discover fixtures pin GIT_CONFIG_GLOBAL/SYSTEM to os.DevNull
+      + `init -b main`; hermetic against developer global git config (signing/aliases).
+   -> 622f697c4 (park/replay lifecycle fix, reconciler.go +13/-12, tests +94):
+      * Park: handleLoaded hold branch now ALSO flips run.step to runStepDone ->
+        Status.Terminated while TLR stays parked. Comment accurately describes it.
+      * Replay: new Reconcile branch (step==runStepDone && heldWorktrees[nn] &&
+        mainSettled) re-enters handleLoaded with the parked entry/tlr — no loader
+        re-evaluation. delete-before-replay prevents double dispatch; end-of-replay
+        requeuer.Add is idempotent (held entry gone; needsBuild yields no reason).
+      * mainLoadCompleted: iterates heldWorktrees in place (no map swap), requeues each
+        held nn. Held entries survive until the replay branch deletes them.
+      * mainSettled: skippedHold test bypass; run==nil distinguishes "main CR gone"
+        (ctrlClient.Get NotFound -> settle, standalone replay) from "main CR exists but
+        never ran" (hold). Main run itself bypasses (worktreeNameOf=="").
+      * mainManifests: nil unless main run step==runStepDone with error-free tlr —
+        conservative rewrite otherwise. Failed-main case settles the hold without
+        manifests (loader/dep validation reports unknown clones) — no deadlock.
+      * Tests: mainRunBlocker blocks ONLY the main load on a channel (Delegate on
+        FakeTiltfileLoader, result snapshotted at construction so later Result swaps
+        don't leak into main dispatch); waitForParked asserts step==runStepDone +
+        held + TLR present; releaseOnce avoids double-close.
+      * CONCERN (non-blocking): replay branch deletes heldWorktrees[nn] BEFORE
+        handleLoaded, i.e. on attempt, not after success — commit message says
+        "after successful replay". On a transient apiserver error mid-replay the
+        parked TLR is dropped until the next RestartOn/trigger (Tiltfile edit
+        re-runs the load; no permanent loss, no corruption). Error-path-only.
+      * MINOR: skippedHold is declared + read but never written anywhere (dead hook).
+      * MINOR: double error wrap "Failed to update API server: ... : Failed to update
+        API server" (handleLoaded wraps updateAndDispatchOwnedObjects' identical wrap).
+      * MINOR: prefixRun re-stamps SourceTiltfile that worktree.applyPrefix already
+        set (same value; redundant, harmless).
+   -> Cross-commit consistency: per-run Environment w/ injected worktree context —
+      tiltfile_state.go:214-217,248 builds worktree.NewPlugin(WithWorktree(name, dir))
+      per Load; plugin OnStart env.SetWorktreeContext -> per-thread local
+      (starkit/environment.go newThread); AbsWorkingDir re-roots at worktree.Dir
+      (starkit/path.go:18-23). Per-run isolation pinned by
+      TestReexec_Isolation_NoCrossWorktreeLeak (PASS).
+      Engine->CR wiring (context for review): upper.go Discover + InitAction.Worktrees,
+      configs_controller.maybeCreateInitialTiltfile creates WorktreeTiltfile per
+      discovered worktree; dark flag worktreesEnabled (default off).
+
+2. go test (private GOCACHE ~/.cache/go-build-val-jxc3)
+   -> SPEC gate: GOCACHE=$HOME/.cache/go-build-val-jxc3 go test
+      ./internal/controllers/core/tiltfile/... -count=1
+      RESULT: ok github.com/tilt-dev/tilt/internal/controllers/core/tiltfile 1.875s
+      Also green at -count=2 (no cross-run state leakage).
+   -> New worktree reconciler tests verbose (-count=1 -v -run 'TestWorktreeRun|TestMainRun'):
+      --- PASS TestWorktreeRun_AfterMain_PrefixedAndStamped (0.04s)
+      --- PASS TestWorktreeRun_BeforeMain_HeldUntilMainLoads (0.01s)
+      --- PASS TestWorktreeRun_Standalone_NoMainCR (0.00s)
+      --- PASS TestMainRun_NeverPrefixed (0.00s)
+      --- PASS TestWorktreeRun_AfterFailedMain (0.00s)
+      Held-until-main test genuinely blocks the main load: park observed via
+      waitForParked (Terminated + held + TLR), dispatch + clone objects only after
+      release + replay; cloneKA.Spec.Worktree == feat-auth; dep "postgres" stays bare
+      after replay (resolved against main manifests).
+   -> RewriteRun seam (-run 'TestRewriteRun'): 5/5 PASS (nil-main conservative,
+      shared-bare/own-cloned dep resolution, empty-wt noop, input not mutated).
+   -> Re-exec/isolation (-run 'TestReexec'): 4/4 PASS (main classic behavior,
+      name/dir injection, path re-rooting, no cross-worktree leak).
+   -> Discover (-run 'TestDiscover'): 9/9 PASS incl. real git worktrees + plain checkouts.
+   -> Full internal/tiltfile/worktree package: ok (46 subtests PASS), 0.993s.
+   -> Adjacent sweeps: ./internal/tiltfile/... ok except baseline failures (criterion 4);
+      ./internal/engine/... all ok (upper/configs/buildcontrol/etc, 11 pkgs);
+      ./internal/controllers/core/kubernetesapply ok 2.327s (clone stamping consumer).
+
+3. go build ./... ; go vet ; gofmt on touched files
+   -> GOCACHE=<private> go build ./... : exit 0
+   -> GOCACHE=<private> go vet ./internal/controllers/core/tiltfile/...
+      ./internal/tiltfile/worktree/... ./internal/engine/... : clean
+   -> gofmt -l internal/controllers/core/tiltfile/ internal/tiltfile/worktree/ : no output
+
+4. Known-baseline failures — CONFIRMED IDENTICAL ON MASTER
+   -> internal/tiltfile: TestKustomizeFlags + TestKustomizeBin fail on branch AND on
+      master (kustomize binary not in PATH; "Falling back to kubectl kustomize"/exit
+      status 127). Same two, nothing else.
+   -> OUT-OF-SCOPE PRE-EXISTING (branch fork-point divergence, NOT caused by tk-jxc
+      commits): internal/controllers/core/portforward registry tests fail deterministically
+      on the branch (TestRegistryAllocatesDistinctPortsPerWorktree, ...PerForward,
+      TestRegistryPortStableAcrossReload, TestRegistryExhaustionSurfacesAsForwardError —
+      "never reported a started forward with LocalPort in range"). Cause verified: branch
+      base = ee0cfda53 (phase 1) which added portforward/registry_test.go, but the
+      reconciler wiring commit baab2d72e ("worktree_config wiring end-to-end — registry
+      consumer") lives on master only (merge-base --is-ancestor baab2d72e HEAD = false;
+      ancestor of master = true). git log master..HEAD -- portforward/ is EMPTY — no
+      tk-jxc commit touches the package. Master's package passes (ok 1.721s, verified
+      by direct read-only run in /Users/yuri/Workdir/Nsx/tilt). Resolves when the branch
+      syncs/rebases over master. No action in tk-jxc.
+
+5. Branch-only, no master changes
+   -> git branch --show-current: tk-jxc
+   -> 3 commits on branch (4d51a8977, 0b41c2b6b, 622f697c4); rev-list master..HEAD = 3;
+      merge-base HEAD master = ee0cfda53 (none of the 3 reachable from master)
+   -> Diff master...HEAD: 6 files, all under internal/ (reconciler.go, worktree.go,
+      worktree_reconciler_test.go, prefix.go, rewrite_test.go, discover_test.go) —
+      no vendor/, no web/, no generated code, no master-side changes.
+
+VERDICT
+=======
+APPROVED — SPEC criteria 1-5 all satisfied. Four non-blocking notes for follow-up:
+(a) replay deletes heldWorktrees entry before success (error-path self-heals on next
+trigger; commit-message wording only); (b) skippedHold dead field; (c) double error
+wrap; (d) portforward fork-point divergence fixed on master, arrives via sync.
+Do NOT merge (per brief); merge gating stays with the Coach/user.
