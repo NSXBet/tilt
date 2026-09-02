@@ -2,7 +2,6 @@ package tiltfile
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/pkg/errors"
 	"go.starlark.net/starlark"
@@ -127,7 +126,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		name:           string(name),
 		updateCmd:      updateCmd,
 		serveCmd:       serveCmd,
-		threadDir:      filepath.Dir(starkit.CurrentExecPath(thread)),
+		threadDir:      starkit.AbsWorkingDir(thread),
 		deps:           deps.Value,
 		triggerMode:    triggerMode,
 		autoInit:       autoInit,

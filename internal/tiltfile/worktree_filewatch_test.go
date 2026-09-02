@@ -98,3 +98,41 @@ local_resource("x", "true", deps=["web"])
 		tlr.Manifests[0].LocalTarget().Deps,
 		"worktree run watch deps must resolve inside the worktree checkout")
 }
+
+// Per-worktree FileWatch scoping (plan §7.8): target-level ignores.
+//
+// local_resource(ignore=...) becomes a FileWatch ignore whose BasePath is the
+// directory of the executing file (localResource.threadDir). For worktree runs
+// the executing file is the shared root Tiltfile in the MAIN checkout, so a
+// naive filepath.Dir(CurrentExecPath) would base the ignore patterns at the
+// main repo while the watched deps live in the worktree — the same failure
+// class the .tiltignore re-rooting (above) fixes for global ignores.
+// threadDir must follow AbsWorkingDir, which the worktree context re-roots
+// at the worktree checkout.
+func TestWorktreeFileWatch_LocalResourceIgnoreRootedAtWorktree(t *testing.T) {
+	f := newFixture(t)
+	f.file("Tiltfile", `
+local_resource("x", "true", deps=["web"], ignore=["logs"])
+`)
+
+	tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)
+	tf.Labels = map[string]string{"tilt.dev/worktree": "feat-auth"}
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+
+	wtDir := f.JoinPath(".worktree", "feat-auth")
+	require.Len(t, tlr.Manifests, 1)
+	lt := tlr.Manifests[0].LocalTarget()
+	require.Equal(t, []string{f.JoinPath(wtDir, "web")}, lt.Deps,
+		"deps must resolve inside the worktree")
+
+	var found bool
+	for _, ig := range lt.FileWatchIgnores {
+		if len(ig.Patterns) == 1 && ig.Patterns[0] == "logs" {
+			found = true
+			assert.Equal(t, wtDir, ig.BasePath,
+				"local_resource ignore patterns must be based at the worktree, not the main checkout")
+		}
+	}
+	assert.True(t, found, "expected the local_resource ignore= pattern in FileWatchIgnores")
+}

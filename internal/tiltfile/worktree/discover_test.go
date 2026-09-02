@@ -136,7 +136,11 @@ func initGitRepo(t *testing.T) string {
 	require.NoError(t, err)
 	runGit(t, root, "init", "-q", ".")
 	runGit(t, root, "-c", "user.name=t", "-c", "user.email=t@t.local",
-		"-c", "commit.gpgsign=false",
+	// Hermetic fixture: global commit signing (commit.gpgsign with
+	// gpg.format=ssh via a signing agent) must not reach the test —
+	// it only needs object-writable plumbing, not the developer's
+	// identity or agent.
+	"-c", "commit.gpgsign=false", "-c", "gpg.format=openpgp",
 		"commit", "--allow-empty", "-q", "-m", "init")
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	return root
