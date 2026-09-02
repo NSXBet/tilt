@@ -1,0 +1,4 @@
+=== tk-7gg validation: go test ./internal/build/ -count=1 -skip 'TestDockerBuild|TestDetectBuildkitCorruption' ===
+SKIP RATIONALE: TestDockerBuild* + TestDetectBuildkitCorruption require a live docker daemon (fixture newDockerBuildFixture calls t.Fatal when the real client cannot connect: 'dial unix /Users/yuri/.orbstack/run/docker.sock: no such file or directory'). Docker/OrbStack is not running on this machine (verified: docker version exit 1, socket absent). These tests are guarded by build tag !skipcontainertests, unchanged from master (git diff master..HEAD touches only internal/container/reference_test.go).
+
+ok  	github.com/tilt-dev/tilt/internal/build	1.156s

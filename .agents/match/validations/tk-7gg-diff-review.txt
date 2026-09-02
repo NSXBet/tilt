@@ -1,0 +1,12 @@
+=== tk-7gg validation: diff review summary ===
+Branch tk-7gg = master (ee0cfda53) + 1 commit be6cfd0c3 (fork: worktree build interception — per-worktree tag rewrite tests)
+
+git diff master..HEAD --stat:
+ internal/container/reference_test.go | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+Commit archeology: internal/build/worktree_tag_test.go (171 ln, 7 tests) and the production seam in internal/container/reference.go (worktree field, WithWorktree/MustWithWorktree, AddTagSuffix -wt- token append, WorktreeTagSuffix escaping) both landed at baseline ee0cfda53 (2026-08-31, coach-committed WIP phase work). Worker commit adds internal/container/reference_test.go (+36 ln: TestWorktreeTagSuffix, TestWorktreeTagSuffix_EmptyNameErrors, TestAddTagSuffix_WorktreeTokenRoundTrip).
+
+Scope check vs SPEC ('wire the worktree token from ImageMap/KubernetesApply ownership into the build path'): the SPEC's expected seam is RefSet.AddTagSuffix (single choke point, DockerBuilder.TagRefs + CustomBuilder both call it — verified at docker_builder.go:97, custom_builder.go:64/70/162). Production wiring through ImageMap/KubernetesApply ownership is explicitly tk-1zq ('Per-worktree ImageMap identity', status open) — engine-side RefSet construction sites (iTarget.Refs -> RefSetFromImageMap) do not call WithWorktree yet, by design until tk-1zq lands. This task's acceptance is test-level: acceptance criteria verified against tests, not engine wiring.
+
+TestCanReuseRef_WorktreeTagDistinctFromMain: byte-identical to baseline ee0cfda53 version (diff confirmed). The 'RED' state per coach comment was the wiring, not the test text; on the current tree the test passes (evidence: tk-7gg-container-and-acceptance-tests.txt). Fake-client error semantics empirically probed: see tk-7gg-errdefs-probe.txt.

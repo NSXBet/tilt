@@ -1,0 +1,25 @@
+=== tk-7gg validation: go test ./internal/container/ -count=1 ===
+ok  	github.com/tilt-dev/tilt/internal/container	0.551s
+
+=== tk-7gg validation: acceptance tests verbose ===
+=== RUN   TestAddTagSuffix_WorktreeTokenRoundTrip
+--- PASS: TestAddTagSuffix_WorktreeTokenRoundTrip (0.00s)
+=== RUN   TestAddTagSuffix_WorktreeTokenEscapes
+--- PASS: TestAddTagSuffix_WorktreeTokenEscapes (0.00s)
+=== RUN   TestAddTagSuffix_WorktreeTokenEscapeEdges
+--- PASS: TestAddTagSuffix_WorktreeTokenEscapeEdges (0.00s)
+=== RUN   TestDockerBuilderTagRefs_Worktree
+--- PASS: TestDockerBuilderTagRefs_Worktree (0.00s)
+=== RUN   TestCustomBuild_WorktreeOutputTagParity
+--- PASS: TestCustomBuild_WorktreeOutputTagParity (0.04s)
+=== RUN   TestCustomBuild_WorktreeNormalModeParity
+--- PASS: TestCustomBuild_WorktreeNormalModeParity (0.01s)
+=== RUN   TestCanReuseRef_WorktreeTagDistinctFromMain
+--- PASS: TestCanReuseRef_WorktreeTagDistinctFromMain (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/build	0.879s
+
+--- PASS: TestWorktreeTagSuffix (0.00s)
+--- PASS: TestWorktreeTagSuffix_EmptyNameErrors (0.00s)
+--- PASS: TestAddTagSuffix_WorktreeTokenRoundTrip (0.00s)
+ok  	github.com/tilt-dev/tilt/internal/container	0.556s

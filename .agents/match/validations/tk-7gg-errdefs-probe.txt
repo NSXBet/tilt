@@ -1,0 +1,5 @@
+=== tk-7gg validation: errdefs interface probe (CanReuseRef premise) ===
+Probe source /tmp/errcheck/main.go: implements fakeNotFound{NotFound() bool} mimicking internal/docker/fake_client.go notFoundError; asserts against github.com/containerd/errdefs v1.0.0 (same version as go.mod).
+IsNotFound(fakeNotFound) = false
+
+Interpretation: cerrdefs.IsNotFound returns false for the fake client's notFoundError type, so ImageExists returns (false, err) for a missing image on the fake client. This confirms the test comment in worktree_tag_test.go: the wt-tag-not-in-store path surfaces as an error, and the test asserts on the observable contract (not reusable) rather than fake-client error plumbing.
