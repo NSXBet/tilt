@@ -1,0 +1,78 @@
+tk-ehr validation evidence — ValidatorEhr — 2026-09-02
+Worktree: /Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-ehr (branch tk-ehr)
+Commits reviewed: 9d7c5c16e (hermetic git fixtures), c021464fd (.gitignore .tmp-go),
+baab2d72e (worktree_config wiring end-to-end), a55a403c3 (prior validation evidence).
+
+ALL RERUNS BELOW ARE FRESH RUNS EXECUTED BY THIS VALIDATOR (prior-pass files verified by rerun).
+
+== 1. Prior-pass evidence re-verified (rerun of named tests) ==
+$ go test ./internal/controllers/core/portforward/ -count=1 -run 'TestRegistry' -v
+=== RUN   TestRegistryAllocatesDistinctPortsPerWorktree
+--- PASS: TestRegistryAllocatesDistinctPortsPerWorktree (0.05s)
+=== RUN   TestRegistryAllocatesDistinctPortsPerForward
+--- PASS: TestRegistryAllocatesDistinctPortsPerForward (0.02s)
+=== RUN   TestRegistryPortStableAcrossReload
+--- PASS: TestRegistryPortStableAcrossReload (0.04s)
+=== RUN   TestRegistryExhaustionSurfacesAsForwardError
+--- PASS: TestRegistryExhaustionSurfacesAsForwardError (0.02s)
+=== RUN   TestRegistryDoesNotHijackExplicitLocalPort
+--- PASS: TestRegistryDoesNotHijackExplicitLocalPort (0.02s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/portforward	1.025s
+
+$ go test ./internal/tiltfile/ -count=1 -run 'TestWorktreeConfig' -v
+=== RUN   TestWorktreeConfig_LoadResultDefaults
+--- PASS: TestWorktreeConfig_LoadResultDefaults (0.05s)
+=== RUN   TestWorktreeConfig_LoadResultOverrides
+--- PASS: TestWorktreeConfig_LoadResultOverrides (0.02s)
+=== RUN   TestWorktreeConfig_WorktreeRunContext
+--- PASS: TestWorktreeConfig_WorktreeRunContext (0.03s)
+=== RUN   TestWorktreeConfig_K8sApplySpecStampedWithWorktree
+--- PASS: TestWorktreeConfig_K8sApplySpecStampedWithWorktree (0.38s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/tiltfile	6.899s
+
+== 2. Full touched-package suites (count=1, no cache) ==
+$ go test ./internal/controllers/core/portforward/ ./internal/tiltfile/worktree/ ./internal/portregistry/ -count=1
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/portforward	1.438s
+ok  	github.com/tilt-dev/tilt/internal/tiltfile/worktree	1.826s
+ok  	github.com/tilt-dev/tilt/internal/portregistry	1.749s
+
+$ go test ./internal/controllers/core/kubernetesapply/ -count=1   (sibling: consumes KubernetesApplySpec.Worktree)
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	1.263s
+
+== 3. Build ==
+$ go build ./...   → success (no output). go vet on 3 touched packages → clean.
+
+== 4. internal/tiltfile/... full tree (first run, pre-disk-crisis) ==
+All subpackages ok, incl. worktree 27.481s ok. Root internal/tiltfile: 2 FAILS:
+TestKustomizeFlags, TestKustomizeBin — environmental (kustomize binary absent from PATH;
+kubectl fallback "Falling back to kubectl kustomize since kustomize was not found in PATH"
+observed in output; the test expects "kustomize build --enable-helm").
+
+== 5. Baseline confirmation (detached master worktree /tmp/tk-ehr-baseline, since removed) ==
+$ GOCACHE=/tmp/go-build-cache-tkehr go test ./internal/tiltfile/ -count=1 -run 'TestKustomizeFlags|TestKustomizeBin' -v
+--- FAIL: TestKustomizeFlags (18.16s)
+--- FAIL: TestKustomizeBin (0.45s)
+FAIL  (identical failure on master ⇒ pre-existing, not caused by this work)
+Also on baseline: ./internal/tiltfile/worktree/ ok 6.245s, ./internal/portregistry/ ok 2.194s.
+
+== 6. Commit-to-criterion mapping (SPEC §3/§7) ==
+- worktree_config() builtin + plugin: internal/tiltfile/worktree/worktree.go — dir/port_range/
+  gateway overrides via starkit.SetState; defaults Dir=.worktree, Gateway=true, Port(0,0).
+  Evidence: TestWorktreeConfig_LoadResultDefaults/LoadResultOverrides PASS (fresh rerun).
+- Plugin feeds TiltfileLoadResult.WorktreeConfig: tiltfile.go Load() wires GetState(result) →
+  tlr.WorktreeConfig. Evidence: same tests + TestWorktreeConfig_WorktreeRunContext PASS.
+- port_range feeds registry (plan §5): tiltfile.go calls portregistry.SetPortRange(wtState.PortMin,
+  wtState.PortMax). Evidence: portforward registry tests PASS (range + exhaustion behavior).
+- Apply-spec producer (§4.1 input): tiltfile_state.go stamps s.worktree from CR label
+  tilt.dev/worktree → k8sDeployTarget sets KubernetesApplySpec.Worktree; main run unstamped.
+  Evidence: TestWorktreeConfig_K8sApplySpecStampedWithWorktree PASS (fresh rerun, new test).
+- IsCloneName exported (engine boundary): prefix.go + validate.go refactor to call it.
+  Evidence: worktree package suite ok (43 tests, incl. prefix/validate tests).
+- Hermetic git fixtures: discover_test.go adds commit.gpgsign=false. Evidence: worktree suite
+  green twice on this machine (also baseline run above).
+- go build ./... green; go vet clean on touched packages.
+
+NOTE: mid-session disk-pressure build failures ("no space left on device", vanished
+go-build cache entries) were environmental; every affected run was retried to green above.
