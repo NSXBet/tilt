@@ -1,0 +1,63 @@
+# Validation evidence for tk-jq8 (Multi-Tiltfile CR creation)
+# Validator: ValidatorJq8 — 2026-09-02
+# Target: MERGED MASTER at /Users/yuri/Workdir/Nsx/tilt (no task worktree; implementation pre-dates task)
+# Protocol: .agents/match/validation-context.md + .agents/match/validate-tk-jq8.md
+
+## 1. Environment
+- master HEAD: c9a44c7ec merge: tk-a6u — web TS types regen for worktree label/annotation + k8s apply worktree field
+- baseline ancestry: `git merge-base --is-ancestor ee0cfda53 HEAD` -> yes
+- baseline commit ee0cfda53 ("fork: worktree phase 1 core + WIP interception/gateway/registry")
+  contains the implementation under review:
+    internal/controllers/apis/tiltfile/main.go                  | 32 ++
+    internal/engine/configs/configs_controller.go               | 21 +
+    internal/engine/configs/configs_controller_worktree_test.go | 147 ++
+- `git diff ee0cfda53..HEAD -- <the three files above>` -> empty (implementation unchanged since baseline)
+
+## 2. Source review (read-only)
+- internal/engine/configs/configs_controller.go: maybeCreateInitialTiltfile
+  creates tiltfile.MainTiltfile(desired, args) + uibutton.StopBuildButton(main),
+  then for each state.Worktrees entry: tiltfile.WorktreeTiltfile(wt.Name, desired, args)
+  + uibutton.StopBuildButton(tiltfile.TiltfileName(wt.Name)). IsAlreadyExists tolerated.
+- internal/controllers/apis/tiltfile/main.go: WorktreeTiltfile sets
+  Name = "tiltfile:<worktree>", Labels["tilt.dev/worktree"] = worktree
+  (v1alpha1.LabelWorktree, pkg/apis/core/v1alpha1/register.go:47),
+  Spec.Path = ResolveFilename(rootTiltfilePath) -> SAME root Tiltfile,
+  per-worktree RestartOn.FileWatches and StopOn.UIButtons.
+
+## 3. Acceptance test run (private GOCACHE=$HOME/.cache/go-build-val-jq8)
+$ cd /Users/yuri/Workdir/Nsx/tilt && GOCACHE=$HOME/.cache/go-build-val-jq8 \
+  go test ./internal/engine/configs/... ./internal/controllers/core/tiltfile/ -count=1 -run 'TestCreateTiltfile' -v
+=== RUN   TestCreateTiltfile
+--- PASS: TestCreateTiltfile (0.03s)
+=== RUN   TestCreateTiltfile_Worktrees
+--- PASS: TestCreateTiltfile_Worktrees (0.00s)
+=== RUN   TestCreateTiltfile_NoWorktrees
+--- PASS: TestCreateTiltfile_NoWorktrees (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/engine/configs	1.287s
+testing: warning: no tests to run
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/tiltfile	1.953s [no tests to run]
+
+## 4. Full packages (worker's verification command, reproduced)
+$ GOCACHE=$HOME/.cache/go-build-val-jq8 go test ./internal/engine/configs/... ./internal/controllers/core/tiltfile/ -count=1
+ok  	github.com/tilt-dev/tilt/internal/engine/configs	0.989s
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/tiltfile	1.789s
+
+## 5. Criterion -> evidence mapping
+- "two worktrees -> exactly 3 CRs": TestCreateTiltfile_Worktrees asserts
+  ElementsMatch([main, tiltfile:feature-a, tiltfile:feature-b], listTiltfileNames) — PASS (§3)
+- "label tilt.dev/worktree": test worktreeLabelOf reads Labels["tilt.dev/worktree"]
+  per worktree CR and asserts main CR has none — PASS (§3)
+- "shared root Tiltfile path": worktree CR Spec.Path == ResolveFilename(root path) — PASS (§3)
+- "per-worktree FileWatch + stop button": source review (§2) — per-worktree
+  RestartOn.FileWatches + StopOn.UIButtons wired in WorktreeTiltfile
+- "zero worktrees -> classic single CR": TestCreateTiltfile_NoWorktrees asserts
+  exactly [main] exists — PASS (§3)
+- "go test ./internal/engine/configs/... green": full package ok (§4)
+
+## 6. Notes
+- No browser surface needed: controller-level Go task (validation-context.md §3).
+- Uncommitted changes on master (internal/hud/view*.go Worktree field) belong to
+  concurrent sibling workers; untouched by this validation and excluded from evidence.
+- Verdict: APPROVED (tk comment posted before `tk update --status approved`).
