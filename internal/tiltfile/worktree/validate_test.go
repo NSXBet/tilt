@@ -128,22 +128,22 @@ func TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees(t *testing.T) {
 	// deps rewrite to its clones and it gains the self-reference dep.
 	require.Equal(t, model.ManifestName("api"), out[0].Name)
 	require.Equal(t,
-		[]model.ManifestName{"wt:feat-auth/web", "api"},
+		[]model.ManifestName{"wt:feat-auth_web", "api"},
 		out[0].ResourceDependencies)
-	require.Equal(t, model.ManifestName("wt:fix-ui/frontend"), out[2].Name)
+	require.Equal(t, model.ManifestName("wt:fix-ui_frontend"), out[2].Name)
 	require.Equal(t, []model.ManifestName{"api"}, out[2].ResourceDependencies)
 }
 
 // A worktree-run manifest whose clone name collides with an existing
-// manifest is an error: main literally defines "wt:feat-auth/api" (a free-form
+// manifest is an error: main literally defines "wt:feat-auth_api" (a free-form
 // engine name), and worktree feat-auth's own "api" rewrites to that clone
 // name. The pass fails loudly instead of silently dropping one definition.
 func TestCombine_CloneNameCollidesWithMain(t *testing.T) {
 	_, err := Combine(
-		[]model.Manifest{md("wt:feat-auth/api")},
+		[]model.Manifest{md("wt:feat-auth_api")},
 		[]RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("api")}}},
 	)
-	require.ErrorContains(t, err, `clone name "wt:feat-auth/api" (worktree "feat-auth") collides with an existing manifest`)
+	require.ErrorContains(t, err, `clone name "wt:feat-auth_api" (worktree "feat-auth") collides with an existing manifest`)
 }
 
 // A run with no name has no worktree identity: the pass cannot prefix or
