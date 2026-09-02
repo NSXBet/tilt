@@ -85,6 +85,26 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 	return out
 }
 
+// RewriteRun rewrites one worktree run's manifests at the engine boundary
+// (plan §4.3): names become the clone `wt:<worktree>/<name>`, deps resolve
+// same-worktree first, else main-defined (shared, stays bare), and each
+// manifest records its producing Tiltfile (`tiltfile:<worktree>`).
+//
+// main is the main run's manifests — nil when no main-run result is
+// available (names still prefixed, deps left untouched rather than guessed).
+// The input manifests are not mutated; the output never aliases their dep
+// slices. Main-run manifests (name == "") pass through unchanged.
+func RewriteRun(manifests []model.Manifest, worktree string, main []model.Manifest) []model.Manifest {
+	var wtOwned map[model.ManifestName]bool
+	if main != nil {
+		wtOwned = make(map[model.ManifestName]bool, len(main))
+		for _, m := range main {
+			wtOwned[m.Name] = true
+		}
+	}
+	return applyPrefix(manifests, worktree, wtOwned)
+}
+
 // ManifestName returns the engine-internal name of a worktree-run manifest:
 // `wt:<worktree>_<name>`. Path-segment safe (see namePrefix above), so it
 // can serve directly as apiserver object name (plan §4.3: engine-internal

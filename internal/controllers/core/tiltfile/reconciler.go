@@ -54,6 +54,15 @@ type Reconciler struct {
 
 	runs map[types.NamespacedName]*runStatus
 
+	// Worktree runs that finished their Tiltfile load before the main run
+	// completed its own load (plan §7.3 hold-until-main): parked by
+	// handleLoaded, kicked by mainLoadCompleted. Keyed by Tiltfile CR name.
+	heldWorktrees map[types.NamespacedName]bool
+
+	// Set by tests that exercise worktree runs without a main run, disabling
+	// the hold-until-main gate (mainSettled).
+	skippedHold bool
+
 	// dockerConnectMetricReporter ensures we only report a single Docker connect status
 	// event per `tilt up`. Currently, a client is initialized on start (via wire/DI)
 	// and if there's an error, an exploding client is created; we'll never attempt
@@ -98,6 +107,7 @@ func NewReconciler(
 		ctrlClient:           ctrlClient,
 		indexer:              indexer.NewIndexer(scheme, indexTiltfile),
 		runs:                 make(map[types.NamespacedName]*runStatus),
+		heldWorktrees:        make(map[types.NamespacedName]bool),
 		requeuer:             indexer.NewRequeuer(),
 		engineMode:           engineMode,
 		k8sContextOverride:   k8sContextOverride,
@@ -183,6 +193,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		err := r.handleLoaded(ctx, nn, &tf, run.entry, run.tlr)
 		if err != nil {
 			return ctrl.Result{}, err
+		}
+
+		// Multi-tiltfile (plan §7.3): the main run's load completes the
+		// shared-name context — worktree runs parked before it (their TLR
+		// evaluated but held) are kicked to replay now.
+		if worktreeNameOf(&tf) == "" {
+			r.mainLoadCompleted()
 		}
 	}
 
@@ -360,12 +377,33 @@ func (r *Reconciler) run(ctx context.Context, nn types.NamespacedName, tf *v1alp
 
 // After the tiltfile has been evaluated, create all the objects in the
 // apiserver.
+//
+// Multi-tiltfile (plan §7.3): this handles any Tiltfile CR — the main
+// "(Tiltfile)" and one `tiltfile:<worktree>` per worktree run. A worktree
+// run's manifests are engine-prefixed (`wt:<worktree>/<name>`) against the
+// main run's current manifests, and its KubernetesApply objects are stamped
+// with the worktree so apply-time clone stamping fires. Worktree runs that
+// finish before the main run is loaded are parked and replayed then —
+// shared-name resolution needs the main result.
 func (r *Reconciler) handleLoaded(
 	ctx context.Context,
 	nn types.NamespacedName,
 	tf *v1alpha1.Tiltfile,
 	entry *BuildEntry,
 	tlr *tiltfile.TiltfileLoadResult) error {
+	wtName := worktreeNameOf(tf)
+	if wtName != "" && !r.mainSettled(ctx) {
+		// The main run hasn't completed a load yet: park this run and let
+		// the main run's completion kick it (mainLoadCompleted). Only the
+		// main run's own result is authoritative for shared-name resolution.
+		r.heldWorktrees[nn] = true
+		logger.Get(ctx).Infof("Waiting for the main Tiltfile to load before loading worktree %q", wtName)
+		return nil
+	}
+	if wtName != "" {
+		delete(r.heldWorktrees, nn)
+	}
+
 	// The engine-prefix rewrite pass (plan §4.3, §7.3): worktree-run
 	// manifests are rewritten to engine-internal clone names
 	// (`wt:<worktree>_<name>`) at this boundary, before they flow into the
@@ -375,20 +413,56 @@ func (r *Reconciler) handleLoaded(
 	// TODO(nick) comment at this site: each worktree's Tiltfile CR
 	// re-executes the same root Tiltfile, and this pass namespaces its
 	// results into the engine.
-	worktreeName := tf.Labels[worktree.LabelWorktree]
-	if worktreeName != "" && tlr.Error == nil {
-		if err := r.applyWorktreeBoundary(ctx, nn, tlr, worktreeName); err != nil {
+	if wtName != "" && tlr.Error == nil {
+		if err := r.applyWorktreeBoundary(ctx, nn, tlr, wtName); err != nil {
 			tlr.Error = err
 			tlr.Manifests = nil
 		}
 	}
 
 	changeEnabledResources := entry.ArgsChanged && tlr != nil && tlr.Error == nil
-	err := updateOwnedObjects(ctx, r.ctrlClient, nn, tf, tlr, changeEnabledResources, r.ciTimeoutFlag, r.engineMode,
-		r.defaultK8sConnection())
+	err := r.updateAndDispatchOwnedObjects(ctx, nn, tf, entry, tlr, changeEnabledResources, wtName)
 	if err != nil {
 		// If updating the API server fails, just return the error, so that the
 		// reconciler will retry.
+		return errors.Wrap(err, "Failed to update API server")
+	}
+
+	run, ok := r.runs[nn]
+	if ok {
+		run.step = runStepDone
+		run.finishTime = time.Now()
+	}
+
+	// Schedule a reconcile in case any triggers happened while we were updating
+	// API objects.
+	r.requeuer.Add(nn)
+
+	return nil
+}
+
+// updateAndDispatchOwnedObjects applies the load result to the apiserver and
+// notifies the engine. Split out of handleLoaded so the hold-until-main
+// replay path (mainLoadCompleted) can reuse it verbatim for parked runs.
+func (r *Reconciler) updateAndDispatchOwnedObjects(
+	ctx context.Context,
+	nn types.NamespacedName,
+	tf *v1alpha1.Tiltfile,
+	entry *BuildEntry,
+	tlr *tiltfile.TiltfileLoadResult,
+	changeEnabledResources bool,
+	wtName string) error {
+	if wtName != "" && tlr.Error == nil {
+		// Worktree runs stamp their KubernetesApply objects with the worktree
+		// name, so apply-time clone stamping (kubernetesapply) fires for this
+		// run's entities only. Main-run objects are untouched. This must
+		// happen before updateOwnedObjects persists the objects.
+		stampWorktreeK8sApply(k8sApplyObjectsOf(tlr.ObjectSet), wtName)
+	}
+
+	err := updateOwnedObjects(ctx, r.ctrlClient, nn, tf, tlr, changeEnabledResources, r.ciTimeoutFlag, r.engineMode,
+		r.defaultK8sConnection())
+	if err != nil {
 		return errors.Wrap(err, "Failed to update API server")
 	}
 
@@ -414,17 +488,6 @@ func (r *Reconciler) handleLoaded(
 		UpdateSettings:        tlr.UpdateSettings,
 		WatchSettings:         tlr.WatchSettings,
 	})
-
-	run, ok := r.runs[nn]
-	if ok {
-		run.step = runStepDone
-		run.finishTime = time.Now()
-	}
-
-	// Schedule a reconcile in case any triggers happened while we were updating
-	// API objects.
-	r.requeuer.Add(nn)
-
 	return nil
 }
 
@@ -458,6 +521,64 @@ func (r *Reconciler) applyWorktreeBoundary(
 	tlr.Manifests = result.Manifests
 	logger.Get(ctx).Debugf("worktree %q: rewrote %d manifest(s) at the engine boundary", worktreeName, len(result.Manifests))
 	return nil
+}
+// mainLoadCompleted kicks worktree runs that finished their load before the
+// main run did: their results were parked (handleLoaded) and are now
+// replayable against the main run's manifests.
+//
+// Callers must hold r.mu (Reconcile holds it for the whole call).
+func (r *Reconciler) mainLoadCompleted() {
+	held := r.heldWorktrees
+	r.heldWorktrees = make(map[types.NamespacedName]bool, len(held))
+	for nn := range held {
+		r.requeuer.Add(nn)
+	}
+}
+
+// mainManifests returns the main run's current manifests, or nil when the
+// main run has never loaded. A nil result keeps the engine-prefix rewrite
+// conservative (names prefixed, deps untouched).
+//
+// Callers must hold r.mu (Reconcile holds it for the whole call); the run()
+// goroutine writes run.tlr under r.mu before scheduling the reconcile that
+// leads here, so no further synchronization is needed.
+func (r *Reconciler) mainManifests() []model.Manifest {
+	run := r.runs[types.NamespacedName{Name: model.MainTiltfileManifestName.String()}]
+	if run == nil || run.step != runStepDone || run.tlr == nil || run.tlr.Error != nil {
+		return nil
+	}
+	return run.tlr.Manifests
+}
+
+// mainSettled reports whether the main Tiltfile run has finished at least
+// one load, successfully or not (worktree runs kick either way — against an
+// error the main run yields no manifests, so the rewrite resolves deps
+// conservatively and the loader reports the unknown clones). The main run
+// itself never consults this: worktreeNameOf == "" bypasses the hold.
+//
+// The hold also releases when the main run is gone entirely (its CR was
+// deleted while a worktree run was parked): the parked run replays as a
+// standalone worktree rather than parking forever.
+//
+// Callers must hold r.mu (Reconcile holds it for the whole call).
+func (r *Reconciler) mainSettled(ctx context.Context) bool {
+	if r.skippedHold {
+		return true
+	}
+	main := types.NamespacedName{Name: model.MainTiltfileManifestName.String()}
+	run := r.runs[main]
+	if run == nil {
+		// No main run ever started, or it was deleted (deleteExistingRun).
+		// A main CR that exists but hasn't started its first run is NOT the
+		// same — distinguish by whether the main Tiltfile CR is present.
+		var tf v1alpha1.Tiltfile
+		if err := r.ctrlClient.Get(ctx, main, &tf); err != nil {
+			// NotFound (or the client errored): nothing to wait for.
+			return true
+		}
+		return false
+	}
+	return run.step == runStepDone
 }
 
 // Cancel execution of a running tiltfile and delete all record of it.
