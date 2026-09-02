@@ -42,7 +42,8 @@ func WithWorktree(name, dir string) Option {
 // WithShared supplies the main-run-defined (shared) manifest names for
 // worktree runs, gating worktree.shared(name). The engine's re-execution
 // driver derives the set from the main run's TiltfileLoadResult manifests
-// (plan §4.3 wtOwned); the main run itself takes none.
+// (plan §4.3 wtOwned); the main run itself takes none — a set supplied
+// without WithWorktree is ignored (worktree.shared stays False).
 func WithShared(names []string) Option {
 	return func(p *Plugin) {
 		p.shared = make(map[string]bool, len(names))
@@ -130,16 +131,23 @@ func (p Plugin) worktreeDir(t *starlark.Thread, fn *starlark.Builtin, args starl
 // "Shared-hack inheritance"). The gate is the main-run result: the engine's
 // re-execution driver evaluates the root Tiltfile for main BEFORE the
 // worktree runs and passes the main-defined manifest names through
-// WithShared. With no main-run result (main == nil, e.g. the main run
-// itself), nothing is shared: worktree.shared returns false and errors are
-// left to dep validation (validate.Combine).
+// WithShared. The main run itself never shares (name() == "" ⇒ False even
+// if a set was supplied): nothing is shared with itself, and classic
+// main-run behavior cannot break on a miswired driver. With no main-run
+// result (shared set empty, e.g. main == nil in Combine), nothing is
+// shared: worktree.shared returns false and errors are left to dep
+// validation (validate.Combine). An empty name errors: it can never be a
+// real resource.
 func (p Plugin) worktreeShared(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	err := starkit.UnpackArgs(t, fn.Name(), args, kwargs, "name", &name)
 	if err != nil {
 		return nil, err
 	}
-	return starlark.Bool(p.shared[name]), nil
+	if name == "" {
+		return nil, fmt.Errorf("%s: name must be non-empty", fn.Name())
+	}
+	return starlark.Bool(p.name != "" && p.shared[name]), nil
 }
 
 // worktree_config: the main Tiltfile's optional overrides (plan §3).

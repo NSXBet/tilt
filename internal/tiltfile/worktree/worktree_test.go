@@ -73,6 +73,34 @@ print(worktree.shared("postgres"))
 	require.Equal(t, "False\n", f.PrintOutput())
 }
 
+// The gate is the worktree-run context, not just the supplied set: even if
+// the engine miswires WithShared without WithWorktree, the main run shares
+// nothing with itself (plan §3 — shared resources are defined by the main
+// run, so sharing with itself is meaningless).
+func TestWorktreeShared_MainRunIgnoresSuppliedSet(t *testing.T) {
+	f := starkit.NewFixture(t, NewPlugin(WithShared([]string{"postgres"})))
+	f.File("Tiltfile", `
+print(worktree.shared("postgres"))
+`)
+	_, err := f.ExecFile("Tiltfile")
+	require.NoError(t, err)
+	require.Equal(t, "False\n", f.PrintOutput())
+}
+
+// An empty name can never be a real resource: error, not silent False.
+func TestWorktreeShared_EmptyNameErrors(t *testing.T) {
+	f := starkit.NewFixture(t, NewPlugin(
+		WithWorktree("feat-auth", "/fake/.worktree/feat-auth"),
+		WithShared([]string{"postgres"}),
+	))
+	f.File("Tiltfile", `
+worktree.shared("")
+`)
+	_, err := f.ExecFile("Tiltfile")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name must be non-empty")
+}
+
 // worktree.shared takes exactly one positional name argument.
 func TestWorktreeShared_RequiresName(t *testing.T) {
 	f := starkit.NewFixture(t, NewPlugin(WithShared([]string{"postgres"})))
