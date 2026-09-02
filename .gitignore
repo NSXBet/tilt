@@ -69,3 +69,4 @@ integration/.kube
 
 # Built binary at repo root
 /tilt
+.tmp-go/
