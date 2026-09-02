@@ -94,9 +94,77 @@ func (v *TabView) buildTabs(isMax bool) rty.Component {
 	} else {
 		l.Add(v.buildTab("3: runtime log"))
 	}
+	wtTabs := v.buildWorktreeTabs()
+	if wtTabs != nil {
+		l.Add(rty.TextString("│"))
+		l.Add(wtTabs)
+	}
 	l.Add(rty.TextString("│ "))
 	l.Add(renderPaneHeader(isMax))
 	result := rty.Bg(l, tcell.ColorWhiteSmoke)
 	result = rty.Fg(result, cText)
 	return result
+}
+
+// buildWorktreeTabs appends one filter tab per worktree (plan §9): "all"
+// plus each worktree name, with the active one highlighted. No worktree in
+// the view means no tabs — the classic single-checkout UI is unchanged.
+func (v *TabView) buildWorktreeTabs() rty.Component {
+	wts := v.worktrees()
+	if len(wts) == 0 {
+		return nil
+	}
+	l := rty.NewLine()
+	l.Add(rty.TextString(" "))
+	l.Add(v.buildTab("4: all worktrees"))
+	for _, wt := range wts {
+		l.Add(rty.TextString("│"))
+		l.Add(v.buildTab("4: " + wt))
+	}
+	return l
+}
+
+// worktrees returns the distinct worktrees present in the view, in stable
+// first-seen order.
+func (v *TabView) worktrees() []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, res := range v.view.Resources {
+		if res.Worktree == "" || seen[res.Worktree] {
+			continue
+		}
+		seen[res.Worktree] = true
+		out = append(out, res.Worktree)
+	}
+	return out
+}
+
+// nextWorktreeFilter cycles the worktree filter (plan §9): all → each
+// worktree in view order → all. Returns false when there is nothing to
+// cycle (no worktrees).
+func nextWorktreeFilter(resources []view.Resource, current string) (string, bool) {
+	seen := make(map[string]bool)
+	var wts []string
+	for _, res := range resources {
+		if res.Worktree == "" || seen[res.Worktree] {
+			continue
+		}
+		seen[res.Worktree] = true
+		wts = append(wts, res.Worktree)
+	}
+	if len(wts) == 0 {
+		return "", false
+	}
+	if current == "" {
+		return wts[0], true
+	}
+	for i, wt := range wts {
+		if wt == current {
+			if i+1 < len(wts) {
+				return wts[i+1], true
+			}
+			return "", true
+		}
+	}
+	return "", true
 }

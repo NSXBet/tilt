@@ -128,6 +128,12 @@ type Resource struct {
 	ResourceInfo ResourceInfoView
 
 	IsTiltfile bool
+
+	// Worktree this resource belongs to (multi-worktree parallel
+	// development, plan §9); "" for the main checkout's resources. The TUI
+	// groups rows under one header per worktree and shows the name next to
+	// resources from other worktrees.
+	Worktree string
 }
 
 func (r Resource) DockerComposeTarget() DCResourceInfo {
@@ -240,6 +246,11 @@ type ViewState struct {
 	TabState         TabState
 	SelectedIndex    int
 	TiltLogState     TiltLogState
+
+	// WorktreeFilter restricts the resource list to one worktree
+	// (multi-worktree parallel development, plan §9); "" shows all. Cycled
+	// from the HUD with the `w` key.
+	WorktreeFilter string
 }
 
 type TabState int

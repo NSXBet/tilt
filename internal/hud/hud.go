@@ -190,6 +190,11 @@ func (h *Hud) handleScreenEvent(ctx context.Context, dispatch func(action store.
 			case r == '3':
 				h.recordInteraction("tab_pod_log")
 				h.currentViewState.TabState = view.TabRuntimeLog
+			case r == 'w': // [W]orktree filter
+				h.recordInteraction("cycle_worktree_filter")
+				if next, ok := nextWorktreeFilter(h.currentView.Resources, h.currentViewState.WorktreeFilter); ok {
+					h.currentViewState.WorktreeFilter = next
+				}
 			}
 		case tcell.KeyUp:
 			h.activeScroller().Up()

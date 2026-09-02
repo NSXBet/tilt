@@ -3,6 +3,7 @@ package hud
 import (
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -190,7 +191,7 @@ func (r *Renderer) renderFooter(v view.View, keys string) rty.Component {
 }
 
 func keyLegend(v view.View, vs view.ViewState) string {
-	defaultKeys := "Browse (↓ ↑), Expand (→) ┊ (enter) log ┊ (ctrl-C) quit  "
+	defaultKeys := "Browse (↓ ↑), Expand (→) ┊ (enter) log ┊ (w) worktree ┊ (ctrl-C) quit  "
 	if vs.AlertMessage != "" {
 		return "Tilt (l)og ┊ (esc) close alert "
 	}
@@ -244,26 +245,118 @@ func (r *Renderer) renderResourceHeader(v view.View) rty.Component {
 }
 
 func (r *Renderer) renderResources(v view.View, vs view.ViewState) rty.Component {
-	rs := v.Resources
+	rs := filterResourcesByWorktree(v.Resources, vs.WorktreeFilter)
 
 	cl := rty.NewConcatLayout(rty.DirVert)
 
-	childNames := make([]string, len(rs))
-	for i, r := range rs {
-		childNames[i] = r.Name.String()
-	}
-	// the items added to `l` below must be kept in sync with `childNames` above
+	// childNames must stay in sync with the children added to `l` below.
+	// Group headers are registered as scroll children too (a `wt:`-prefixed
+	// name can't collide: manifest names of that shape are the clones the
+	// header's own group contains), so the footer selection map stays
+	// index-aligned with vs.Resources via resourceRows.
+	childNames, rows := resourceRows(rs)
 	l, selectedResource := r.rty.RegisterElementScroll(resourcesScollerName, childNames)
 
-	if len(rs) > 0 {
-		for i, res := range rs {
-			resView := NewResourceView(v.LogReader, res, vs.Resources[i], res.TriggerMode, selectedResource == res.Name.String(), r.clock)
-			l.Add(resView.Build())
+	lastWorktree := "$$none$$"
+	for _, row := range rows {
+		if row.isGroupHeader {
+			if row.worktree != lastWorktree {
+				l.Add(r.renderWorktreeHeader(row.worktree))
+				lastWorktree = row.worktree
+			}
+			continue
 		}
+		res := rs[row.resourceIndex]
+		resView := NewResourceView(v.LogReader, res, vs.Resources[row.resourceIndex], res.TriggerMode, selectedResource == res.Name.String(), r.clock)
+		l.Add(resView.Build())
 	}
 
 	cl.Add(l)
 	return cl
+}
+
+// renderWorktreeHeader renders the group header for one worktree (plan §9):
+// the main checkout's resources get no header; each worktree gets one row
+// naming its checkout.
+func (r *Renderer) renderWorktreeHeader(worktree string) rty.Component {
+	return rty.Fg(rty.TextString(fmt.Sprintf(" ▣ %s ", worktree)), cLightText)
+}
+
+// resourceRow is one scroll child of the resources pane: either a group
+// header or a resource row.
+type resourceRow struct {
+	isGroupHeader bool
+	worktree      string
+	// resourceIndex is the index of the resource in the (filtered) resource
+	// slice; -1 for group headers.
+	resourceIndex int
+}
+
+// resourceRows computes the resources pane's scroll children for rs: one
+// header per worktree (main checkout last, matching ManifestDefinitionOrder
+// which lists main-run manifests before worktree clones), with its resources
+// underneath. Headers are skipped when every resource belongs to one
+// worktree — the common single-worktree case renders exactly as before.
+func resourceRows(rs []view.Resource) ([]string, []resourceRow) {
+	seen := make(map[string]bool)
+	var worktrees []string
+	for _, res := range rs {
+		if res.Worktree == "" || seen[res.Worktree] {
+			continue
+		}
+		seen[res.Worktree] = true
+		worktrees = append(worktrees, res.Worktree)
+	}
+
+	if len(worktrees) <= 1 {
+		names := make([]string, len(rs))
+		rows := make([]resourceRow, len(rs))
+		for i, res := range rs {
+			names[i] = res.Name.String()
+			rows[i] = resourceRow{resourceIndex: i}
+		}
+		return names, rows
+	}
+
+	sort.Strings(worktrees)
+
+	var names []string
+	var rows []resourceRow
+	for _, wt := range worktrees {
+		names = append(names, "wt:"+wt+"/")
+		rows = append(rows, resourceRow{isGroupHeader: true, worktree: wt, resourceIndex: -1})
+		for j, res := range rs {
+			if res.Worktree != wt {
+				continue
+			}
+			names = append(names, res.Name.String())
+			rows = append(rows, resourceRow{resourceIndex: j})
+		}
+	}
+	for j, res := range rs {
+		if res.Worktree != "" {
+			continue
+		}
+		names = append(names, res.Name.String())
+		rows = append(rows, resourceRow{resourceIndex: j})
+	}
+	return names, rows
+}
+
+// filterResourcesByWorktree keeps resources matching the worktree filter
+// (plan §9): a `worktree/` prefix matches that worktree's clones; bare text
+// matches names as before; "" matches everything.
+func filterResourcesByWorktree(rs []view.Resource, filter string) []view.Resource {
+	if filter == "" {
+		return rs
+	}
+	var out []view.Resource
+	for _, res := range rs {
+		if filter == res.Worktree {
+			out = append(out, res)
+		}
+	}
+	return out
 }
 
 func (r *Renderer) SetUp() (chan tcell.Event, error) {

@@ -11,6 +11,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/ospath"
 	"github.com/tilt-dev/tilt/internal/store"
 	"github.com/tilt-dev/tilt/internal/store/k8sconv"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/model"
 	"github.com/tilt-dev/tilt/pkg/model/logstore"
@@ -19,7 +20,8 @@ import (
 func StateToTerminalView(s store.EngineState, mu *sync.RWMutex) view.View {
 	ret := view.View{}
 
-	// One row per loaded Tiltfile run (main + worktrees), in definition order.
+	// One row per loaded Tiltfile run (main + worktrees), in definition
+	// order so the TUI is deterministic (plan §9).
 	for _, ms := range s.GetTiltfileStates() {
 		ret.Resources = append(ret.Resources, tiltfileResourceView(ms))
 	}
@@ -87,6 +89,7 @@ func StateToTerminalView(s store.EngineState, mu *sync.RWMutex) view.View {
 			CurrentBuild:       currentBuild,
 			Endpoints:          model.LinksToURLStrings(endpoints), // hud can't handle link names, just send URLs
 			ResourceInfo:       resourceInfoView(mt),
+			Worktree:           manifestWorktree(mt.Manifest),
 		}
 
 		ret.Resources = append(ret.Resources, r)
@@ -108,6 +111,7 @@ func tiltfileResourceView(ms *store.ManifestState) view.Resource {
 		CurrentBuild: currentBuild,
 		BuildHistory: ms.BuildHistory,
 		ResourceInfo: view.TiltfileResourceInfo{},
+		Worktree:     tiltfileWorktree(ms.Name),
 	}
 	if !currentBuild.Empty() {
 		tr.PendingBuildSince = currentBuild.StartTime
@@ -115,6 +119,24 @@ func tiltfileResourceView(ms *store.ManifestState) view.Resource {
 		tr.LastDeployTime = ms.LastBuild().FinishTime
 	}
 	return tr
+}
+
+// tiltfileWorktree returns the worktree name for a Tiltfile resource row:
+// worktree runs load CRs named `tiltfile:<worktree>` (plan §9); the main
+// run's "(Tiltfile)" row stays on the main checkout.
+func tiltfileWorktree(name model.ManifestName) string {
+	wt, ok := worktree.ParseTiltfileName(name)
+	if !ok {
+		return ""
+	}
+	return wt
+}
+
+// manifestWorktree extracts the worktree a manifest belongs to (plan §9):
+// worktree runs stamp tilt.dev/worktree on their manifests' labels
+// (internal/tiltfile/worktree); "" for the main checkout.
+func manifestWorktree(m model.Manifest) string {
+	return m.Labels[v1alpha1.LabelWorktree]
 }
 
 func resourceInfoView(mt *store.ManifestTarget) view.ResourceInfoView {

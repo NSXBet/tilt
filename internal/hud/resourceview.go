@@ -11,6 +11,7 @@ import (
 
 	"github.com/tilt-dev/tilt/internal/hud/view"
 	"github.com/tilt-dev/tilt/internal/rty"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/model"
 	"github.com/tilt-dev/tilt/pkg/model/logstore"
@@ -154,6 +155,11 @@ func (v *ResourceView) titleTextName() rty.Component {
 	}
 	if len(v.warnings()) > 0 {
 		name = fmt.Sprintf("%s %s", v.res.Name, "— Warning ⚠️")
+	}
+	// Rows from another worktree carry that worktree's name (plan §9); the
+	// author-visible base name keeps rows inside one group aligned.
+	if wt, base := worktree.SplitName(v.res.Name); wt != "" {
+		name = fmt.Sprintf("%s %s", base, wt)
 	}
 	sb.Fg(tcell.ColorDefault).Text(name)
 	return sb.Build()
