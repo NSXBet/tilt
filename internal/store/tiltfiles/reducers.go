@@ -15,6 +15,10 @@ func HandleTiltfileUpsertAction(state *store.EngineState, action TiltfileUpsertA
 		state.TiltfileStates[mn] = store.NewTiltfileManifestState(mn)
 	}
 
+	// Only the main run feeds UserConfigState (worktree audit, plan §7.7):
+	// worktree Tiltfile CRs share the main run's args (kept in sync by
+	// SetTiltfileArgs), so letting them write here too would be redundant;
+	// extensions carry their own args but are not this process's config.
 	if mn == model.MainTiltfileManifestName {
 		state.UserConfigState.Args = action.Tiltfile.Spec.Args
 	}

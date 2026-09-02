@@ -19,7 +19,8 @@ import (
 func StateToTerminalView(s store.EngineState, mu *sync.RWMutex) view.View {
 	ret := view.View{}
 
-	for _, ms := range s.TiltfileStates {
+	// One row per loaded Tiltfile run (main + worktrees), in definition order.
+	for _, ms := range s.GetTiltfileStates() {
 		ret.Resources = append(ret.Resources, tiltfileResourceView(ms))
 	}
 
@@ -102,7 +103,7 @@ const MainTiltfileManifestName = model.MainTiltfileManifestName
 func tiltfileResourceView(ms *store.ManifestState) view.Resource {
 	currentBuild := ms.EarliestCurrentBuild()
 	tr := view.Resource{
-		Name:         MainTiltfileManifestName,
+		Name:         ms.Name,
 		IsTiltfile:   true,
 		CurrentBuild: currentBuild,
 		BuildHistory: ms.BuildHistory,

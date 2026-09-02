@@ -197,6 +197,23 @@ func TestRuntimeStateJobCompleteMissingPods(t *testing.T) {
 	assert.Equal(t, v1alpha1.RuntimeStatusOK, runtimeState.RuntimeStatus())
 }
 
+func TestStateToTerminalViewWorktreeTiltfileRows(t *testing.T) {
+	state := newState(nil)
+
+	// The main run plus a worktree re-execution (plan §7.7): each loaded
+	// Tiltfile gets its own row named after its run.
+	wtName := model.ManifestName("tiltfile:feat-auth")
+	state.TiltfileDefinitionOrder = append(state.TiltfileDefinitionOrder, wtName)
+	state.TiltfileStates[wtName] = store.NewTiltfileManifestState(wtName)
+
+	v := StateToTerminalView(*state, &sync.RWMutex{})
+
+	require.Len(t, v.Resources, 2)
+	assert.Equal(t, model.MainTiltfileManifestName, v.Resources[0].Name)
+	assert.Equal(t, wtName, v.Resources[1].Name)
+	assert.True(t, v.Resources[1].IsTiltfile)
+}
+
 func TestStateToTerminalViewUnresourcedYAMLManifest(t *testing.T) {
 	m := k8sManifest(t, model.UnresourcedYAMLManifestName, testyaml.SanchoYAML)
 	state := newState([]model.Manifest{m})

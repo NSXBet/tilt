@@ -319,6 +319,9 @@ func (r *Reconciler) run(ctx context.Context, nn types.NamespacedName, tf *v1alp
 	// If the user is executing an empty main tiltfile, that probably means
 	// they need a tutorial. For now, we link to that tutorial, but a more interactive
 	// system might make sense here.
+	// Main-run only by design (worktree audit, plan §7.7): a worktree run that
+	// defines no new resources is legitimate — it relies on the main run's
+	// shared resources (plan §3).
 	if tlr.Error == nil && len(tlr.Manifests) == 0 && tf.Name == model.MainTiltfileManifestName.String() {
 		tlr.Error = fmt.Errorf("No resources found. Check out https://docs.tilt.dev/tutorial.html to get started!")
 	}

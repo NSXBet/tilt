@@ -180,6 +180,9 @@ func HandleConfigsReloaded(
 	}
 
 	// Global state that's only configurable from the main manifest.
+	// Main-only by design (worktree audit, plan §7.7): process-wide settings
+	// (features, telemetry, update/prune settings) stay owned by the main
+	// run; worktree runs only contribute manifests and resources.
 	if isMainTiltfile {
 		state.Features = event.Features
 		state.TelemetrySettings = event.TelemetrySettings

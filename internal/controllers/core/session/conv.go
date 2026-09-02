@@ -338,12 +338,18 @@ func waitingFromHolds(mn model.ManifestName, holds buildcontrol.HoldSet) *sessio
 // file changes are stored stop level on state, but conceptually it does similar
 // things.
 func tiltfileTarget(name model.ManifestName, ms *store.ManifestState) session.Target {
+	// The main run keeps the historical target name; other runs (worktrees)
+	// derive theirs from their Tiltfile state name so every target is unique.
+	targetName := "tiltfile:update"
+	if name != model.MainTiltfileManifestName {
+		targetName = fmt.Sprintf("%s:update", name)
+	}
+
 	target := session.Target{
-		Name:      "tiltfile:update",
+		Name:      targetName,
 		Resources: []string{name.String()},
 		Type:      session.TargetTypeJob,
 	}
-
 	// Tiltfile is special in engine state and doesn't have a target, just state, so
 	// this logic is largely duplicated from the generic resource build logic
 	if ms.IsBuilding() {
@@ -370,4 +376,20 @@ func tiltfileTarget(name model.ManifestName, ms *store.ManifestState) session.Ta
 	}
 
 	return target
+}
+
+// isExtensionTiltfileState reports whether the named Tiltfile state belongs to
+// an Extension-owned Tiltfile CR. Extension Tiltfiles are third-party code
+// managed by their Extension CR, not part of this session's targets.
+func isExtensionTiltfileState(state store.EngineState, name model.ManifestName) bool {
+	tf, ok := state.Tiltfiles[name.String()]
+	if !ok {
+		return false
+	}
+	for _, ref := range tf.GetOwnerReferences() {
+		if ref.Kind == "Extension" {
+			return true
+		}
+	}
+	return false
 }

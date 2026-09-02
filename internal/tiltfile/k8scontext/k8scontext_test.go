@@ -8,6 +8,7 @@ import (
 	"github.com/tilt-dev/clusterid"
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/internal/tiltfile/starkit"
+	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 )
 
 func TestK8sNamespaceDefaultNamespace(t *testing.T) {
@@ -58,6 +59,26 @@ func TestForbidK8sContext(t *testing.T) {
 	// All k8s contexts are allowed in extensions.
 	f.Tiltfile().ObjectMeta.Name = "my-ext"
 	assert.True(t, MustState(model).IsAllowed(f.Tiltfile()))
+}
+
+func TestForbidK8sContextWorktreeRun(t *testing.T) {
+	f := NewFixture(t, "gke-blorg", "default", clusterid.ProductGKE)
+	f.File("Tiltfile", `
+`)
+	model, err := f.ExecFile("Tiltfile")
+	assert.NoError(t, err)
+
+	// A worktree run re-executes the root Tiltfile, so it gets the same
+	// production-context guard as the main run — the extension exemption
+	// does not apply.
+	tf := f.Tiltfile()
+	tf.ObjectMeta.Name = "tiltfile:feat-auth"
+	tf.ObjectMeta.Labels = map[string]string{v1alpha1.LabelWorktree: "feat-auth"}
+	assert.False(t, MustState(model).IsAllowed(tf))
+
+	// Without the label, a non-main Tiltfile stays exempt (extensions).
+	tf.ObjectMeta.Labels = nil
+	assert.True(t, MustState(model).IsAllowed(tf))
 }
 
 func NewFixture(tb testing.TB, ctx k8s.KubeContext, ns k8s.Namespace, env clusterid.Product) *starkit.Fixture {

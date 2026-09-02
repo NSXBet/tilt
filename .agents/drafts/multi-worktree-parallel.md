@@ -322,7 +322,33 @@ Single process → an in-process registry suffices; the cross-process TOCTOU rac
 4. **Apply interception**: worktree mutation stage in `KubernetesApplyReconciler.createEntitiesToDeploy` (`reconciler.go:459`, next to InjectLabels) — clone stamping, selector mutation, clone Services, ingress clones (§4.2).
 5. **Build interception**: per-worktree tag rewrite in `ImageBuildAndDeployer` before `ImageMap` registration (`image_build_and_deployer.go:54`, `:508`).
 6. Registry for per-worktree local ports (§5); gateway host-router (§6).
-7. Audit `MainTiltfileManifestName` special-cases: `internal/store/tiltfiles/args.go:15`, `session/status.go:31`, `internal/hud/view.go:104`, `configs_controller.go:52`.
+   7. ~~Audit `MainTiltfileManifestName` special-cases~~ — **DONE (tk-ja0).**
+      Fixed (multi-worktree was wrong, tests added):
+      - `internal/store/tiltfiles/args.go` SetTiltfileArgs + `internal/cli/args.go`
+        `tilt args`: now propagate args to every `tiltfile:<wt>` CR (main-only left
+        worktree runs reloading on stale args).
+      - `internal/tiltfile/k8scontext/k8scontext.go` IsAllowed: worktree runs
+        (tilt.dev/worktree label) now satisfy the production-context guard; only
+        extensions stay exempt (worktree re-execution could previously bypass the
+        guard and deploy to prod).
+      - `internal/controllers/core/session/{status,conv}.go`: session targets cover
+        every loaded Tiltfile run, so a failing worktree load fails `tilt ci`;
+        extensions excluded; per-run unique target names.
+      - `internal/hud/view.go` tiltfileResourceView: row name from the Tiltfile
+        state (was hardcoded to main, so worktree/extension rows rendered as
+        "(Tiltfile)"); rows iterate GetTiltfileStates (stable order).
+      - `internal/hud/webview/convert.go` sortUIResources: all Tiltfile-run rows
+        pinned ahead of manifests via TiltfileDefinitionOrder (was main-only pin).
+      Kept main-only by design (documented in place):
+      - `tiltfile/api.go` toSessionObjects/toClusterObjects (one Session/Cluster CR
+        per process; worktrees captured as session targets), `reconciler.go` empty-
+        Tiltfile tutorial error (a worktree run defining no new resources is
+        legitimate), `tiltfile/reducers.go` global-settings gate (process-wide
+        settings owned by main), `store/tiltfiles/reducers.go` UserConfigState gate
+        (args synced via SetTiltfileArgs), `store/engine_state.go` MainTiltfileState/
+        LastMainTiltfileError accessors (main is a distinct concept), `logstore/prefix.go`
+        (no log prefix for main), `cluster/reconciler.go` + `telemetry/controller.go`
+        log attribution, `configs_controller.go` (already one CR per execution, phase 1).
 8. FileWatches: per-worktree watch scoping — worktree runs watch the worktree's file tree (`WatchInputs` cwd override).
 
 ## 8. Web UI

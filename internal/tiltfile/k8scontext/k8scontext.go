@@ -117,10 +117,22 @@ func (s State) KubeContext() k8s.KubeContext {
 // A more compatible solution would be to have api server objects
 // for the kubecontexts that tilt is aware of, and ways to mark them safe.
 func (s State) IsAllowed(tf *v1alpha1.Tiltfile) bool {
-	if tf.Name != model.MainTiltfileManifestName.String() {
-		return true
+	if tf.Name == model.MainTiltfileManifestName.String() {
+		return s.isAllowedForRun()
 	}
 
+	// A worktree run re-executes the root Tiltfile (plan §3), so it must
+	// satisfy the same production-context guard as the main run; only
+	// extensions (arbitrary third-party Tiltfiles, no tilt.dev/worktree
+	// label) are exempt.
+	if tf.Labels[v1alpha1.LabelWorktree] != "" {
+		return s.isAllowedForRun()
+	}
+
+	return true
+}
+
+func (s State) isAllowedForRun() bool {
 	if s.env == k8s.ProductNone || s.env.IsDevCluster() {
 		return true
 	}

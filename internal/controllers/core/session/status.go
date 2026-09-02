@@ -11,7 +11,6 @@ import (
 	"github.com/tilt-dev/tilt/internal/engine/buildcontrol"
 	"github.com/tilt-dev/tilt/internal/store"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
-	"github.com/tilt-dev/tilt/pkg/model"
 )
 
 func (r *Reconciler) makeLatestStatus(session *v1alpha1.Session, result *ctrl.Result) v1alpha1.SessionStatus {
@@ -23,12 +22,16 @@ func (r *Reconciler) makeLatestStatus(session *v1alpha1.Session, result *ctrl.Re
 		StartTime: session.Status.StartTime,
 	}
 
-	// A session only captures services that are created by the main Tiltfile
-	// entrypoint. We don't consider any extension Tiltfiles or Manifests created
-	// by them.
-	ms, ok := state.TiltfileStates[model.MainTiltfileManifestName]
-	if ok {
-		status.Targets = append(status.Targets, tiltfileTarget(model.MainTiltfileManifestName, ms))
+	// A session captures every loaded Tiltfile run: the main entrypoint and
+	// each worktree re-execution of it (plan §7.7). Without this, a failing
+	// worktree load is invisible to exit conditions (tilt ci would report
+	// success while a worktree's Tiltfile errors). Extensions are third-party
+	// Tiltfiles owned by their Extension CR, not part of this session.
+	for _, ms := range state.GetTiltfileStates() {
+		if isExtensionTiltfileState(state, ms.Name) {
+			continue
+		}
+		status.Targets = append(status.Targets, tiltfileTarget(ms.Name, ms))
 	}
 
 	// determine the reason any resources (and thus all of their targets) are waiting (aka "holds")

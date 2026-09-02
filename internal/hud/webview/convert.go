@@ -81,7 +81,7 @@ func CompleteView(ctx context.Context, client ctrlclient.Client, st store.RStore
 	ret.TiltStartTime = metav1.NewMicroTime(s.TiltStartTime)
 	ret.IsComplete = true
 
-	sortUIResources(ret.UiResources, s.ManifestDefinitionOrder)
+	sortUIResources(ret.UiResources, s.TiltfileDefinitionOrder, s.ManifestDefinitionOrder)
 
 	return ret, nil
 }
@@ -106,12 +106,18 @@ func LogUpdate(st store.RStore, checkpoint logstore.Checkpoint) (*proto_webview.
 	return ret, nil
 }
 
-func sortUIResources(resources []v1alpha1.UIResource, order []model.ManifestName) {
-	resourceOrder := make(map[string]int, len(order))
-	for i, name := range order {
+// sortUIResources orders resources by engine definition order: every loaded
+// Tiltfile run's resource (main + worktrees, plan §7.7) sorts ahead of all
+// manifests, in Tiltfile definition order; manifests follow in manifest
+// definition order. Unordered resources sort last, alphabetically.
+func sortUIResources(resources []v1alpha1.UIResource, tiltfileOrder, manifestOrder []model.ManifestName) {
+	resourceOrder := make(map[string]int, len(tiltfileOrder)+len(manifestOrder))
+	for i, name := range tiltfileOrder {
 		resourceOrder[name.String()] = i
 	}
-	resourceOrder[store.MainTiltfileManifestName.String()] = -1
+	for i, name := range manifestOrder {
+		resourceOrder[name.String()] = len(tiltfileOrder) + i
+	}
 	sort.Slice(resources, func(i, j int) bool {
 		objI := resources[i]
 		objJ := resources[j]

@@ -18,6 +18,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/analytics"
 	engineanalytics "github.com/tilt-dev/tilt/internal/engine/analytics"
 	"github.com/tilt-dev/tilt/internal/sliceutils"
+	"github.com/tilt-dev/tilt/internal/store/tiltfiles"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/logger"
 	"github.com/tilt-dev/tilt/pkg/model"
@@ -140,9 +141,11 @@ func (c *argsCmd) run(ctx context.Context, args []string) error {
 		logger.Get(ctx).Infof("Tilt is already running with those args -- no action taken")
 		return nil
 	}
-	tf.Spec.Args = args
 
-	err = ctrlclient.Update(ctx, &tf)
+	// Apply to the main Tiltfile and every worktree re-execution of it
+	// (plan §7.7): worktree runs execute the same root Tiltfile and must
+	// track the main run's args.
+	err = tiltfiles.SetTiltfileArgs(ctx, ctrlclient, args)
 	if err != nil {
 		return err
 	}

@@ -40,9 +40,26 @@ func completeProtoView(t *testing.T, s store.EngineState) *proto_webview.View {
 	require.NoError(t, err)
 	view.UiResources = resources
 
-	sortUIResources(view.UiResources, s.ManifestDefinitionOrder)
+	sortUIResources(view.UiResources, s.TiltfileDefinitionOrder, s.ManifestDefinitionOrder)
 
 	return view
+}
+
+func TestSortUIResourcesWorktreeTiltfilePinned(t *testing.T) {
+	wtName := model.ManifestName("tiltfile:feat-auth")
+	resources := []v1alpha1.UIResource{
+		{ObjectMeta: metav1.ObjectMeta{Name: "frontend"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: wtName.String()}},
+		{ObjectMeta: metav1.ObjectMeta{Name: model.MainTiltfileManifestName.String()}},
+	}
+	sortUIResources(resources,
+		[]model.ManifestName{model.MainTiltfileManifestName, wtName},
+		[]model.ManifestName{"frontend"})
+
+	require.Len(t, resources, 3)
+	assert.Equal(t, model.MainTiltfileManifestName.String(), resources[0].Name)
+	assert.Equal(t, wtName.String(), resources[1].Name)
+	assert.Equal(t, "frontend", resources[2].Name)
 }
 
 func TestStateToWebViewRelativeEditPaths(t *testing.T) {

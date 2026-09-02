@@ -44,6 +44,30 @@ func TestExitControlCI_TiltfileFailure(t *testing.T) {
 	f.requireDoneWithError("fake Tiltfile error")
 }
 
+func TestExitControlCI_WorktreeTiltfileFailure(t *testing.T) {
+	f := newFixture(t, store.EngineModeCI)
+
+	// A worktree Tiltfile run is its own TiltfileState (plan §7.7): a failing
+	// worktree load must fail the session exactly like a main Tiltfile error.
+	f.Store.WithState(func(state *store.EngineState) {
+		tiltfiles.HandleTiltfileUpsertAction(state, tiltfiles.TiltfileUpsertAction{
+			Tiltfile: &v1alpha1.Tiltfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "tiltfile:feat-auth",
+					Labels: map[string]string{v1alpha1.LabelWorktree: "feat-auth"},
+				},
+			},
+		})
+		ms := state.TiltfileStates["tiltfile:feat-auth"]
+		ms.AddCompletedBuild(model.BuildRecord{
+			Error: errors.New("fake worktree Tiltfile error"),
+		})
+	})
+
+	f.MustReconcile(sessionKey)
+	f.requireDoneWithError("fake worktree Tiltfile error")
+}
+
 func TestExitControlIdempotent(t *testing.T) {
 	f := newFixture(t, store.EngineModeCI)
 
