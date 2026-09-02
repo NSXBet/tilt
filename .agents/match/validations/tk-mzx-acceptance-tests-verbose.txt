@@ -1,0 +1,26 @@
+=== RUN   TestWorktreeCloneStamping
+     No images injected into Kubernetes YAML
+     Applying YAML to cluster
+     Objects applied to cluster:
+       → sancho-config:configmap
+       → sancho:deployment
+       → sancho-sidecar:deployment
+       → sancho:service
+       → sancho-wt-feat-auth:deployment
+       → sancho-sidecar-wt-feat-auth:deployment
+       → sancho-wt-feat-auth:service
+--- PASS: TestWorktreeCloneStamping (0.04s)
+=== RUN   TestWorktreeCloneStamping_ApplyCmdPath
+     Running cmd: custom-apply-cmd
+     Objects applied to cluster:
+       → sancho:deployment
+       → sancho-wt-feat-auth:deployment
+--- PASS: TestWorktreeCloneStamping_ApplyCmdPath (0.00s)
+=== RUN   TestWorktreeCloneStamping_MainRunNoop
+     No images injected into Kubernetes YAML
+     Applying YAML to cluster
+     Objects applied to cluster:
+       → sancho:deployment
+--- PASS: TestWorktreeCloneStamping_MainRunNoop (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	0.847s
