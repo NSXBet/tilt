@@ -1,0 +1,10 @@
+=== RUN   TestWorktreeConfig_LoadResultDefaults
+--- PASS: TestWorktreeConfig_LoadResultDefaults (0.00s)
+=== RUN   TestWorktreeConfig_LoadResultOverrides
+--- PASS: TestWorktreeConfig_LoadResultOverrides (0.00s)
+=== RUN   TestWorktreeConfig_WorktreeRunContext
+--- PASS: TestWorktreeConfig_WorktreeRunContext (0.00s)
+=== RUN   TestWorktreeConfig_K8sApplySpecStampedWithWorktree
+--- PASS: TestWorktreeConfig_K8sApplySpecStampedWithWorktree (0.01s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/tiltfile	0.934s

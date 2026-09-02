@@ -1,0 +1,7 @@
+--- PASS: TestRegistryAllocatesDistinctPortsPerWorktree (0.06s)
+--- PASS: TestRegistryAllocatesDistinctPortsPerForward (0.02s)
+--- PASS: TestRegistryPortStableAcrossReload (0.05s)
+--- PASS: TestRegistryExhaustionSurfacesAsForwardError (0.02s)
+--- PASS: TestRegistryDoesNotHijackExplicitLocalPort (0.02s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/portforward	1.133s

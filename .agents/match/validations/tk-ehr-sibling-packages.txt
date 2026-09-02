@@ -1,0 +1,3 @@
+ok  	github.com/tilt-dev/tilt/internal/tiltfile/worktree	1.200s
+ok  	github.com/tilt-dev/tilt/internal/portregistry	1.015s
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	1.004s
