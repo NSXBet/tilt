@@ -1,0 +1,46 @@
+# tk-ljk diff review — commit 20521f999 (fork: docker-compose project suffix + registry port deconflict)
+Scope: 5 files, +413/-1 (docker_compose.go, starkit/path.go, tiltfile.go, tiltfile_state.go, tiltfile_docker_compose_test.go)
+
+## Spec criteria -> implementation mapping
+1. "Project name suffix per worktree (default already dir-derived, docker_compose.go:135)"
+   -> dockerCompose(): after the dir-derived NormalizeProjectName(base(dir(Tiltfile))) default
+      and after explicit project_name= are both resolved, a worktree run (thread-local
+      WorktreeContextOf(thread).Name != "") rewrites project.Name to
+      "<authored>-wt-<worktree>" (wtComposeProjectName). Charset is compose-safe:
+      NormalizeProjectName keeps [a-z0-9_-]; worktree names are directory basenames
+      (Discover skips dot-dirs; "main" rejected) so the joined name stays a valid
+      compose project name / container-name prefix.
+2. "Explicit DockerComposeProject.Name override (dockercomposeservice_types.go:215)"
+   -> Same gate covers the explicit override (suffixed too); dc_resource(project_name=)
+      resolves against s.dc keyed by ENGINE names, so authoredDCProjectName() translates
+      authored -> engine (re-applies the same suffix). Covered by
+      TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun.
+3. "Published ports deconflicted via port registry (phase 3)"
+   -> deconflictDCPorts() gated on worktree runs only: parses the resolved compose
+      project via dcCli.Project, rebinds every fixed numeric host binding through
+      portregistry.Allocate keyed by wtPortOwner("dc:<engine-project>/<service>:<target>/<protocol>")
+      (stable across reloads, distinct per worktree/project/service), then re-marshals
+      the full config to a scratch temp YAML and repoints ConfigPaths (runtime compose up
+      + reload diff) at it; parsed services re-mutated in place so PublishedPorts/UI
+      links and ServiceYAML diffing match what actually runs. Main runs untouched.
+      compose-go appends ports lists across -f files (no override rule), which is why
+      the rewrite-in-tempfile approach (not an -f override file) is correct.
+4. "port_range feed" -> tiltfileLoader.Load: portregistry.SetPortRange(wtState.PortMin,
+      wtState.PortMax) after worktree.GetState; (0,0) leaves OS-fallback mode. Consumer
+      parity with tk-zfi's portforward wiring (master: reconciler.go portRegistryOwner)
+      confirmed.
+5. "Test: two worktrees compose up simultaneously, distinct projects, no port clashes"
+   -> TestDockerComposeTwoWorktreesNoPortClash (feat-auth vs fix-bug: distinct project
+      names, distinct allocated ports, neither holds authored 12312).
+
+## Supporting internals verified
+- starkit.WorktreeContextOf: thread-local readback of the WorktreeContext that
+  Environment.newThread stamps (SetLocal(worktreeContextKey)) from worktree.Plugin.OnStart
+  (SetWorktreeContext(Name,Dir)); plugin built with WithWorktree(worktreeName, worktreeDir)
+  in loadManifests from the Tiltfile CR's tilt.dev/worktree label — matches the engine's
+  re-execution driver (configs_controller.go creates WorktreeTiltfile per discovered worktree).
+- Gating on thread context (not s.worktree) is correct: builtins run DURING ExecFile,
+  before loadManifests stamps s.worktree; comment documents this.
+- go vet clean; gofmt clean on all changed files.
+- s.worktree state field stamped in loadManifests (feeds DC target stamping/apply-clone
+  consumers in later tasks); no unused-var build errors (vet passes).

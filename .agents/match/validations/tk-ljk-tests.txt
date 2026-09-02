@@ -1,0 +1,48 @@
+=== RUN   TestDockerComposeProjectName
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeProjectName1699172931/001/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeProjectName (0.31s)
+=== RUN   TestDockerComposeProjectName_WorktreeRun
+=== RUN   TestDockerComposeProjectName_WorktreeRun/dir-derived_default
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeProjectName_WorktreeRundir-derived_default39061542/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+=== RUN   TestDockerComposeProjectName_WorktreeRun/explicit_project_name
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeProjectName_WorktreeRunexplicit_project_name2381464953/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+=== RUN   TestDockerComposeProjectName_WorktreeRun/distinct_authored_names
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeProjectName_WorktreeRundistinct_authored_names240899479/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeProjectName_WorktreeRun (0.41s)
+    --- PASS: TestDockerComposeProjectName_WorktreeRun/dir-derived_default (0.17s)
+    --- PASS: TestDockerComposeProjectName_WorktreeRun/explicit_project_name (0.12s)
+    --- PASS: TestDockerComposeProjectName_WorktreeRun/distinct_authored_names (0.12s)
+=== RUN   TestDockerComposeProjectName_MainRunUnchanged
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeProjectName_MainRunUnchanged2769930156/001/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeProjectName_MainRunUnchanged (0.08s)
+=== RUN   TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun1985665057/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun (0.10s)
+=== RUN   TestDockerComposeWorktreePortDeconflict
+=== RUN   TestDockerComposeWorktreePortDeconflict/main_run_keeps_authored_ports
+time="2026-09-02T13:18:37-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeWorktreePortDeconflictmain_run_keeps_authored_4250090852/001/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+=== RUN   TestDockerComposeWorktreePortDeconflict/worktree_run_rebinds
+time="2026-09-02T13:18:38-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeWorktreePortDeconflictworktree_run_rebinds651294214/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+=== RUN   TestDockerComposeWorktreePortDeconflict/second_worktree_rebinds_again
+time="2026-09-02T13:18:38-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeWorktreePortDeconflictsecond_worktree_rebinds_1902043089/001/.worktree/fix-bug/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeWorktreePortDeconflict (0.33s)
+    --- PASS: TestDockerComposeWorktreePortDeconflict/main_run_keeps_authored_ports (0.11s)
+    --- PASS: TestDockerComposeWorktreePortDeconflict/worktree_run_rebinds (0.11s)
+    --- PASS: TestDockerComposeWorktreePortDeconflict/second_worktree_rebinds_again (0.11s)
+=== RUN   TestDockerComposeTwoWorktreesNoPortClash
+time="2026-09-02T13:18:38-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeTwoWorktreesNoPortClash4098421905/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+time="2026-09-02T13:18:38-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeTwoWorktreesNoPortClash4098421905/002/.worktree/fix-bug/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeTwoWorktreesNoPortClash (0.24s)
+=== RUN   TestDockerComposeWorktreePortStableAcrossReloads
+time="2026-09-02T13:18:38-03:00" level=warning msg="/private/var/folders/t5/vg35bv5n0jj00xfvpx3wqd000000gn/T/TestDockerComposeWorktreePortStableAcrossReloads1473875335/001/.worktree/feat-auth/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+--- PASS: TestDockerComposeWorktreePortStableAcrossReloads (0.30s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/tiltfile	2.908s
+--- FAIL: TestKustomizeFlags (0.07s)
+--- FAIL: TestKustomizeBin (0.30s)
+---full-package-run (exit 0)
+FAIL
+FAIL	github.com/tilt-dev/tilt/internal/tiltfile	11.742s
+ok  	github.com/tilt-dev/tilt/internal/tiltfile/starkit	1.369s
+FAIL
+which-kustomize-exit:1 (known-baseline: TestKustomizeFlags/TestKustomizeBin fail without kustomize binary on PATH)
