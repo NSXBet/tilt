@@ -2,8 +2,10 @@ package tiltfile
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +15,8 @@ import (
 	"github.com/tilt-dev/tilt/internal/controllers/apis/liveupdate"
 	ctrltiltfile "github.com/tilt-dev/tilt/internal/controllers/apis/tiltfile"
 	"github.com/tilt-dev/tilt/internal/dockercompose"
+	"github.com/tilt-dev/tilt/internal/portregistry"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/pkg/model"
 )
 
@@ -1248,4 +1252,212 @@ type dcPublishedPortsHelper struct {
 
 func dcPublishedPorts(ports ...int) dcPublishedPortsHelper {
 	return dcPublishedPortsHelper{ports: ports}
+}
+
+// wtPortRangeFor reserves a narrow registry range for a test so fallback
+// allocations are deterministic and assertions can check range membership;
+// released on cleanup so parallel tests never fight over the range.
+func wtPortRangeFor(t *testing.T, owner string) (int, int) {
+	t.Helper()
+	base := int(wtRangeCounter.Add(1)) * 100
+	min, max := 20000+base, 20000+base+99
+	t.Cleanup(func() {
+		portregistry.SetPortRange(0, 0)
+		for p := min; p <= max; p++ {
+			portregistry.Release(fmt.Sprintf("%s-%d", owner, p))
+		}
+	})
+	portregistry.SetPortRange(min, max)
+	return min, max
+}
+
+var wtRangeCounter atomic.Int64
+
+// wtSetupWorktreeCheckout mirrors a real worktree run's layout: the root
+// Tiltfile stays at the repo root, and the worktree checkout (`.worktree/
+// <name>/`) holds the files the run re-roots path resolution at (plan §0:
+// docker_compose paths resolve against the worktree checkout). tiltfileBody
+// is the root Tiltfile content (the same file the engine re-executes per
+// worktree).
+func wtSetupWorktreeCheckout(f *fixture, tiltfileBody string) {
+	f.dockerfile(filepath.Join("foo", "Dockerfile"))
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "docker-compose.yml"), simpleConfig)
+	f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "docker-compose.yml"), simpleConfig)
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "foo", "Dockerfile"), simpleDockerfile)
+	f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "foo", "Dockerfile"), simpleDockerfile)
+	f.file("Tiltfile", tiltfileBody)
+}
+
+// Acceptance (tk-ljk, plan §4.5): a worktree run's compose project name is
+// suffixed per worktree — both the dir-derived default and an explicit
+// project_name= — so two worktrees compose up as distinct projects.
+func TestDockerComposeProjectName_WorktreeRun(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		tiltfile       string
+		expectedSuffix string
+	}{
+		{"dir-derived default", `docker_compose('docker-compose.yml')`, "feat-auth-wt-feat-auth"},
+		{"explicit project_name", `docker_compose('docker-compose.yml', project_name='hello')`, "hello-wt-feat-auth"},
+		{"distinct authored names", `docker_compose('docker-compose.yml', project_name='hello2')`, "hello2-wt-feat-auth"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			wtSetupWorktreeCheckout(f, tc.tiltfile)
+
+			tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+			tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+			require.NoError(t, tlr.Error)
+			f.loadResult = tlr
+
+			m := f.assertDcManifest("foo")
+			require.Equal(t, tc.expectedSuffix, m.DockerComposeTarget().Spec.Project.Name)
+		})
+	}
+}
+
+// Main runs keep the authored project name: no suffix, classic behavior.
+func TestDockerComposeProjectName_MainRunUnchanged(t *testing.T) {
+	f := newFixture(t)
+
+	f.dockerfile(filepath.Join("foo", "Dockerfile"))
+	f.file("docker-compose.yml", simpleConfig)
+	f.file("Tiltfile", `docker_compose('docker-compose.yml', project_name='hello')`)
+
+	f.load()
+	m := f.assertDcManifest("foo")
+	require.Equal(t, "hello", m.DockerComposeTarget().Spec.Project.Name)
+}
+
+// dc_resource(project_name=) is authored against the Tiltfile's name; in a
+// worktree run the engine sees the suffixed one, and the builtin translates
+// back so options still attach (here: renaming the service).
+func TestDockerComposeDCResourceAuthoredProjectName_WorktreeRun(t *testing.T) {
+	f := newFixture(t)
+	wtSetupWorktreeCheckout(f, `
+docker_compose('docker-compose.yml', project_name='hello')
+dc_resource('foo', project_name='hello', new_name='foo2')
+`)
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+	f.loadResult = tlr
+
+	f.assertDcManifest("foo2")
+}
+
+// Acceptance (tk-ljk, plan §4.5): a worktree run's published host ports are
+// rebound through the port registry — distinct from the authored binding,
+// inside the configured range, and carried on the manifest target (what the
+// UI links against) as well as the runtime config file (what compose up
+// binds). Main runs are untouched.
+func TestDockerComposeWorktreePortDeconflict(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		worktree string
+	}{
+		{"main run keeps authored ports", ""},
+		{"worktree run rebinds", "feat-auth"},
+		{"second worktree rebinds again", "fix-bug"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			min, max := wtPortRangeFor(t, "dcpd")
+
+			f := newFixture(t)
+			wtSetupWorktreeCheckout(f, `docker_compose('docker-compose.yml', project_name='dcpd-hello')`)
+			f.file("docker-compose.yml", simpleConfig) // main-run case reads the root copy
+
+			tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)
+			if tc.worktree != "" {
+				tf = ctrltiltfile.WorktreeTiltfile(tc.worktree, f.JoinPath("Tiltfile"), nil)
+			}
+			tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+			require.NoError(t, tlr.Error)
+			f.loadResult = tlr
+
+			m := f.assertDcManifest("foo")
+			ports := m.DockerComposeTarget().PublishedPorts()
+			require.Len(t, ports, 1)
+
+			if tc.worktree == "" {
+				require.Equal(t, []int{12312}, ports)
+				return
+			}
+
+			require.NotEqual(t, 12312, ports[0], "worktree must not hold the authored port")
+			require.GreaterOrEqual(t, ports[0], min)
+			require.LessOrEqual(t, ports[0], max)
+
+			// The rewritten runtime config must carry the same binding —
+			// this is the file `compose up` actually consumes.
+			proj := m.DockerComposeTarget().Spec.Project
+			require.Len(t, proj.ConfigPaths, 1)
+			require.NotEqual(t, f.JoinPath("docker-compose.yml"), proj.ConfigPaths[0])
+			runtimeYAML, err := os.ReadFile(proj.ConfigPaths[0])
+			require.NoError(t, err)
+			require.Contains(t, string(runtimeYAML), fmt.Sprintf("published: \"%d\"", ports[0]))
+			require.NotContains(t, string(runtimeYAML), "published: \"12312\"")
+		})
+	}
+}
+
+// The acceptance test: two worktrees compose up simultaneously — distinct
+// projects, distinct (registry-allocated) host ports for the same authored
+// binding, no clashes.
+func TestDockerComposeTwoWorktreesNoPortClash(t *testing.T) {
+	wtPortRangeFor(t, "twowt")
+
+	load := func(t *testing.T, f *fixture, worktree string) model.Manifest {
+		t.Helper()
+		tf := ctrltiltfile.WorktreeTiltfile(worktree, f.JoinPath("Tiltfile"), nil)
+		tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+		require.NoError(t, tlr.Error)
+		return tlr.Manifests[0]
+	}
+
+	newWtFixture := func(t *testing.T) *fixture {
+		f := newFixture(t)
+		wtSetupWorktreeCheckout(f, `docker_compose('docker-compose.yml')`)
+		return f
+	}
+
+	f1 := newWtFixture(t)
+	m1 := load(t, f1, "feat-auth")
+	f2 := newWtFixture(t)
+	m2 := load(t, f2, "fix-bug")
+
+	require.Equal(t, "feat-auth-wt-feat-auth", m1.DockerComposeTarget().Spec.Project.Name)
+	require.Equal(t, "fix-bug-wt-fix-bug", m2.DockerComposeTarget().Spec.Project.Name)
+	require.NotEqual(t, m1.DockerComposeTarget().Spec.Project.Name,
+		m2.DockerComposeTarget().Spec.Project.Name)
+
+	p1 := m1.DockerComposeTarget().PublishedPorts()
+	p2 := m2.DockerComposeTarget().PublishedPorts()
+	require.Len(t, p1, 1)
+	require.Len(t, p2, 1)
+	require.NotEqual(t, p1[0], p2[0], "two worktrees must not hold the same host port")
+	require.NotEqual(t, p1[0], 12312)
+	require.NotEqual(t, p2[0], 12312)
+}
+
+// Registry allocations are stable across Tiltfile reloads: re-declaring the
+// same project/service/binding hands back the same port (contract from
+// plan §5, shared with tk-zfi's portforward wiring).
+func TestDockerComposeWorktreePortStableAcrossReloads(t *testing.T) {
+	wtPortRangeFor(t, "reload")
+
+	f := newFixture(t)
+	wtSetupWorktreeCheckout(f, `docker_compose('docker-compose.yml')`)
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+
+	first := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, first.Error)
+	second := f.newTiltfileLoader().Load(f.ctx, tf, &first)
+	require.NoError(t, second.Error)
+
+	require.Equal(t,
+		first.Manifests[0].DockerComposeTarget().PublishedPorts(),
+		second.Manifests[0].DockerComposeTarget().PublishedPorts())
 }

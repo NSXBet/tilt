@@ -30,3 +30,15 @@ func CurrentExecPath(t *starlark.Thread) string {
 	}
 	return ret.(string)
 }
+
+// WorktreeContextOf returns the worktree context injected into this thread
+// by the plugin's OnStart (plan §0): Name is "" in the main run, the
+// worktree name in a re-execution. Builtins that must vary per run but take
+// no worktree argument (e.g. docker_compose project naming, plan §4.5) read
+// the run's context from here instead of threading it through starlark.
+func WorktreeContextOf(t *starlark.Thread) WorktreeContext {
+	if worktree, ok := t.Local(worktreeContextKey).(WorktreeContext); ok {
+		return worktree
+	}
+	return WorktreeContext{}
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/container"
 	"github.com/tilt-dev/tilt/internal/controllers/apis/liveupdate"
 	"github.com/tilt-dev/tilt/internal/dockercompose"
+	"github.com/tilt-dev/tilt/internal/portregistry"
 	"github.com/tilt-dev/tilt/internal/sliceutils"
 	"github.com/tilt-dev/tilt/internal/tiltfile/io"
 	"github.com/tilt-dev/tilt/internal/tiltfile/links"
@@ -149,6 +150,17 @@ func (s *tiltfileState) dockerCompose(thread *starlark.Thread, fn *starlark.Buil
 		project.Name = loader.NormalizeProjectName(filepath.Base(filepath.Dir(currentTiltfilePath)))
 	}
 
+	// Worktree runs isolate their compose project from the main run's (plan
+	// §4.5): containers/networks/volumes are keyed by project name, so two
+	// worktrees plus main can compose up simultaneously without collisions.
+	// The suffix applies to the dir-derived default AND an explicit
+	// project_name= — the latter keeps the Tiltfile author-visible name while
+	// the engine sees the per-run one (dc_resource(project_name=) translates
+	// back via authoredDCProjectName). Main runs keep the authored name.
+	if wt := starkit.WorktreeContextOf(thread); wt.Name != "" {
+		project.Name = wtComposeProjectName(project.Name, wt.Name)
+	}
+
 	// Set to tiltfile directory for YAML blob tempfiles
 	if project.ProjectPath == "" {
 		project.ProjectPath = filepath.Dir(currentTiltfilePath)
@@ -205,6 +217,18 @@ func (s *tiltfileState) dockerCompose(thread *starlark.Thread, fn *starlark.Buil
 		dc.services[svc.Name] = svc
 	}
 
+	// Worktree runs: rebind published host ports via the port registry
+	// (plan §4.5, §5) so two worktrees plus main can compose up
+	// simultaneously. Main runs keep the authored bindings untouched.
+	// The gate reads the thread's worktree context: builtins run DURING
+	// ExecFile, before loadManifests stamps s.worktree.
+	if starkit.WorktreeContextOf(thread).Name != "" {
+		err = s.deconflictDCPorts(dc, services)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return starlark.None, nil
 }
 
@@ -253,7 +277,7 @@ func (s *tiltfileState) dcResource(thread *starlark.Thread, fn *starlark.Builtin
 		return nil, fmt.Errorf("image arg must be a string; got %T", imageVal)
 	}
 
-	projectName, svc, err := s.getDCService(name, projectName)
+	projectName, svc, err := s.getDCService(name, s.authoredDCProjectName(thread, projectName))
 	if err != nil {
 		return nil, err
 	}
@@ -555,4 +579,151 @@ func (s *tiltfileState) dcServiceToManifest(service *dcService, dcSet *dcResourc
 		WithImageTargets(iTargets)
 
 	return m, nil
+}
+
+// wtComposeProjectName returns the per-run compose project name:
+// `<authored>-wt-<worktree>` (loader.NormalizeProjectName characters only,
+// so it stays a valid compose project name and container name prefix).
+func wtComposeProjectName(authored, worktree string) string {
+	return fmt.Sprintf("%s-wt-%s", authored, worktree)
+}
+
+// authoredDCProjectName strips a worktree run's project-name suffix:
+// dc_resource(project_name=) is authored against the Tiltfile's name, which
+// dockerCompose() suffixed for the engine (wtComposeProjectName); resolve it
+// back so the builtin finds the resource set it belongs to. The run's
+// worktree comes off the thread: builtins run DURING ExecFile, before
+// loadManifests stamps s.worktree.
+func (s *tiltfileState) authoredDCProjectName(thread *starlark.Thread, projectName string) string {
+	wtName := starkit.WorktreeContextOf(thread).Name
+	if wtName == "" {
+		return projectName
+	}
+	// dc_resource(project_name=) is authored with the bare (author-visible)
+	// name; the registry of parsed projects (s.dc) is keyed by the engine
+	// name, which in a worktree run carries the -wt-<worktree> suffix
+	// (wtComposeProjectName). Translate authored -> engine here.
+	if projectName != "" {
+		return wtComposeProjectName(projectName, wtName)
+	}
+	return projectName
+}
+
+// deconflictDCPorts rewrites the run's published host ports through the port
+// registry so two worktrees (and main) can compose up simultaneously
+// without clashes (plan §4.5, §5). Author-visible bindings never pass
+// through the registry: main runs compose exactly what the user wrote, and
+// a worktree's allocation is keyed on the authored binding (service +
+// container port + protocol — wtPortOwner), so it is stable across Tiltfile
+// reloads while staying distinct across worktrees — the same contract
+// tk-zfi wired for portforward locals.
+//
+// compose-go merges ports lists across -f files (override/merge.go has no
+// services.*.ports rule — sequences append), so a rewritten override file
+// would ADD to the authored bindings, not replace them. Instead the full
+// resolved config is re-marshaled with the new host ports and materialized
+// as the project's only config file (tempDir, the same pattern as inline
+// YAML blobs): runtime `compose up` binds the deconflicted ports. The
+// parsed services are re-mutated in place so PublishedPorts/ServiceYAML and
+// the manifest-level endpoint links match what actually runs.
+//
+// Caller has already stamped dcrs.Project.Name with the per-run project
+// name, so allocations from two worktrees never share an owner.
+func (s *tiltfileState) deconflictDCPorts(dcrs *dcResourceSet, services []*dcService) error {
+	proj, err := s.dcCli.Project(s.ctx, dcrs.Project)
+	if err != nil {
+		return err
+	}
+
+	rewrote := false
+	for _, name := range proj.ServiceNames() {
+		svcConfig := proj.Services[name]
+		var ports []types.ServicePortConfig
+		for _, portSpec := range svcConfig.Ports {
+			authored, err := strconv.Atoi(portSpec.Published)
+			if err != nil || authored == 0 {
+				// not a fixed host binding (e.g. an ephemeral or
+				// non-numeric form): the OS assigns it, nothing to
+				// deconflict
+				ports = append(ports, portSpec)
+				continue
+			}
+			port, err := portregistry.Allocate(wtPortOwner(dcrs.Project.Name, name, portSpec), 0)
+			if err != nil {
+				return errors.Wrapf(err, "allocating worktree port for compose service %q (authored host port %d)",
+					name, authored)
+			}
+			rewrote = true
+			portSpec.Published = strconv.Itoa(port)
+			ports = append(ports, portSpec)
+		}
+		svcConfig.Ports = ports
+		proj.Services[name] = svcConfig
+	}
+
+	if !rewrote {
+		return nil
+	}
+
+	resolved, err := composeyaml.Marshal(proj)
+	if err != nil {
+		return errors.Wrap(err, "marshaling deconflicted docker-compose config")
+	}
+	tmpdir, err := s.tempDir()
+	if err != nil {
+		return err
+	}
+	tmpfile, err := os.Create(filepath.Join(tmpdir.Path(), fmt.Sprintf("%x.yml", sha256.Sum256([]byte(resolved)))))
+	if err != nil {
+		return err
+	}
+	if _, err := tmpfile.WriteString(string(resolved)); err != nil {
+		tmpfile.Close()
+		return err
+	}
+	if err := tmpfile.Close(); err != nil {
+		return err
+	}
+
+	// The rewritten config replaces the authored file set everywhere the
+	// project travels: runtime compose calls (projectArgs) and the
+	// reload-diff (dc.configPaths).
+	dcrs.Project.ConfigPaths = []string{tmpfile.Name()}
+	dcrs.Project.ProjectPath = proj.WorkingDir
+	dcrs.configPaths = dcrs.Project.ConfigPaths
+
+	// Re-parse through the standard path so dcService.PublishedPorts (UI
+	// endpoint links) and dcService.ServiceYAML (config diffing) carry the
+	// deconflicted bindings, and authored options (dc_resource) still
+	// resolve. Resolved paths come back absolute from the loader, matching
+	// dockerComposeConfigToService's expectations.
+	rewritten, err := parseDCConfig(s.ctx, s.dcCli, dcrs)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]*dcService, len(rewritten))
+	for _, svc := range rewritten {
+		byName[svc.Name] = svc
+	}
+	for _, svc := range services {
+		updated, ok := byName[svc.Name]
+		if !ok {
+			continue
+		}
+		svc.PublishedPorts = updated.PublishedPorts
+		svc.ServiceYAML = updated.ServiceYAML
+		svc.ServiceConfig = updated.ServiceConfig
+		svc.MountedLocalDirs = updated.MountedLocalDirs
+		svc.imageRefFromConfig = updated.imageRefFromConfig
+	}
+	return nil
+}
+
+// wtPortOwner keys a registry allocation on the authored binding: stable
+// across reloads (same binding → same owner → same port) and distinct per
+// project/service/target/protocol — the project name is already the per-run
+// suffixed one (wtComposeProjectName), so two worktrees never share an
+// owner, and two projects in one worktree don't either.
+func wtPortOwner(projectName, serviceName string, portSpec types.ServicePortConfig) string {
+	return fmt.Sprintf("dc:%s/%s:%d/%s", projectName, serviceName, portSpec.Target, portSpec.Protocol)
 }

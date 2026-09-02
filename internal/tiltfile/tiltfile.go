@@ -252,8 +252,10 @@ func (tfl tiltfileLoader) Load(ctx context.Context, tf *corev1alpha1.Tiltfile, p
 	tlr.WorktreeConfig = wtState
 
 	// worktree_config() port_range feeds the in-process port registry
-	// (plan §5, tk-zfi): (0, 0) leaves OS-fallback mode. Range applies to
-	// subsequent allocations only; existing reservations never churn.
+	// (plan §5, tk-zfi/tk-ljk consumers): (0, 0) leaves OS-fallback mode.
+	// The range applies to subsequent allocations only; existing
+	// reservations are never revoked by a reload (ports do not churn on
+	// save).
 	portregistry.SetPortRange(wtState.PortMin, wtState.PortMax)
 
 	configSettings, _ := config.GetState(result)

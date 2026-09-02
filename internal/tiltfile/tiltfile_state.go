@@ -257,6 +257,10 @@ func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, 
 		return nil, result, starkit.UnpackBacktrace(err)
 	}
 
+	// The run's worktree ("" for main) feeds DC target stamping and the
+	// registry port allocation below (plan §4.5).
+	s.worktree = worktreeName
+
 	resources, unresourced, err := s.assemble()
 	if err != nil {
 		return nil, result, err
