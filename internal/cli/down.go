@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,8 +15,11 @@ import (
 
 	"github.com/tilt-dev/tilt/internal/analytics"
 	ctrltiltfile "github.com/tilt-dev/tilt/internal/controllers/apis/tiltfile"
+	"github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply"
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/internal/localexec"
+	"github.com/tilt-dev/tilt/internal/tiltfile"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/logger"
 	"github.com/tilt-dev/tilt/pkg/model"
@@ -25,6 +29,12 @@ type downCmd struct {
 	fileName         string
 	deleteNamespaces bool
 	deleteVolumes    bool
+	// worktrees enables multi-worktree teardown (plan §9.1): `tilt down`
+	// re-executes the root Tiltfile per discovered worktree and deletes
+	// their manifests and clone objects. Default on — down tears down
+	// everything `tilt up` loaded (plan §2); --worktrees=false restores
+	// the classic single-Tiltfile teardown.
+	worktrees        bool
 	downDepsProvider func(ctx context.Context, tiltAnalytics *analytics.TiltAnalytics, subcommand model.TiltSubcommand) (DownDeps, error)
 }
 
@@ -56,6 +66,10 @@ Docker Volumes are not deleted by default. Use --delete-volumes to change that.
 
 Kubernetes resources with the annotation 'tilt.dev/down-policy: keep' are not deleted.
 
+With worktrees present in the worktree dir (default .worktree/), their resources are
+deleted too: each worktree's Tiltfile is re-executed and its manifests and clones are
+deleted. Use --worktrees=false to delete only the main Tiltfile's resources.
+
 For more complex cases, the Tiltfile has APIs to add additional flags and arguments to the Tilt CLI.
 These arguments can be scripted to define custom subsets of resources to delete.
 See https://docs.tilt.dev/tiltfile_config.html for examples.
@@ -66,8 +80,7 @@ See https://docs.tilt.dev/tiltfile_config.html for examples.
 	addKubeContextFlag(cmd)
 	addNamespaceFlag(cmd)
 	cmd.Flags().BoolVar(&c.deleteNamespaces, "delete-namespaces", false, "delete namespaces defined in the Tiltfile (by default, don't)")
-	cmd.Flags().BoolVar(&c.deleteVolumes, "delete-volumes", false, "delete docker volumes defined in the Tiltfile (by default, don't)")
-
+	cmd.Flags().BoolVar(&c.worktrees, "worktrees", true, "also tear down git worktrees discovered in the worktree dir (each worktree's Tiltfile is re-executed and its resources deleted)")
 	return cmd
 }
 
@@ -84,15 +97,60 @@ func (c *downCmd) run(ctx context.Context, args []string) error {
 }
 
 func (c *downCmd) down(ctx context.Context, downDeps DownDeps, args []string) error {
+	// Worktree teardown (plan §9.1): re-execute the SAME root Tiltfile per
+	// discovered worktree — the same execution `tilt up` runs — so every
+	// worktree's manifests delete alongside main's.
+	var wtRuns []worktreeRun
+	if c.worktrees {
+		var err error
+		wtRuns, err = c.discoverWorktreeRuns(ctx, downDeps.tfl, args)
+		if err != nil {
+			return err
+		}
+	}
+
 	tlr := downDeps.tfl.Load(ctx, ctrltiltfile.MainTiltfile(c.fileName, args), nil)
 	err := tlr.Error
 	if err != nil {
 		return err
 	}
 
-	sortedManifests := sortManifestsForDeletion(tlr.Manifests, tlr.EnabledManifests)
+	// Main-run manifests keep the existing enabled-resources filtering.
+	// Every worktree manifest is additionally delete-eligible: down tears
+	// down everything `tilt up` loaded (plan §9.1), and a worktree run's
+	// enabled set is its own.
+	manifests := tlr.Manifests
+	enabledNames := append([]model.ManifestName{}, tlr.EnabledManifests...)
+	seen := make(map[model.ManifestName]bool, len(tlr.Manifests))
+	for _, m := range tlr.Manifests {
+		seen[m.Name] = true
+	}
+	for _, run := range wtRuns {
+		if run.tlr.Error != nil {
+			// A worktree run whose Tiltfile no longer loads (e.g. the branch
+			// edited it into a broken state) must not block tearing down the
+			// rest: skip it and move on.
+			logger.Get(ctx).Infof("Skipping worktree %q: %v", run.name, run.tlr.Error)
+			continue
+		}
+		for _, m := range run.tlr.Manifests {
+			// Keep the first definition of a name: a shared manifest
+			// redefined by a worktree run is ONE cluster object, and a
+			// duplicate would only produce a redundant delete.
+			if !seen[m.Name] {
+				seen[m.Name] = true
+				manifests = append(manifests, m)
+			}
+			enabledNames = append(enabledNames, m.Name)
+		}
+	}
 
+	sortedManifests := sortManifestsForDeletion(manifests, enabledNames)
 	if err := deleteK8sEntities(ctx, sortedManifests, tlr.UpdateSettings, downDeps, c.deleteNamespaces); err != nil {
+		return err
+	}
+
+	if err := deleteWorktreeClones(ctx, wtRuns, downDeps); err != nil {
 		return err
 	}
 
@@ -117,6 +175,86 @@ func (c *downCmd) down(ctx context.Context, downDeps DownDeps, args []string) er
 	}
 
 	return nil
+}
+
+// worktreeRun is one worktree's re-execution of the root Tiltfile.
+type worktreeRun struct {
+	name string
+	tlr  tiltfile.TiltfileLoadResult
+}
+
+// discoverWorktreeRuns re-loads the root Tiltfile for every discovered
+// worktree (plan §2 position-based discovery): the same executions `tilt up`
+// performs, so `tilt down` deletes what `tilt up` created.
+func (c *downCmd) discoverWorktreeRuns(ctx context.Context, tfl tiltfile.TiltfileLoader, args []string) ([]worktreeRun, error) {
+	rootTiltfilePath := ctrltiltfile.ResolveFilename(c.fileName)
+	wts, err := worktree.Discover(filepath.Dir(rootTiltfilePath), worktree.DefaultDir)
+	if err != nil {
+		return nil, err
+	}
+
+	runs := make([]worktreeRun, 0, len(wts))
+	for _, wt := range wts {
+		tlr := tfl.Load(ctx, ctrltiltfile.WorktreeTiltfile(wt.Name, rootTiltfilePath, args), nil)
+		runs = append(runs, worktreeRun{name: wt.Name, tlr: tlr})
+	}
+	return runs, nil
+}
+
+// deleteWorktreeClones deletes the clone objects (plan §4.2) each worktree
+// run applies alongside its YAML: the run's manifests still carry the
+// stable names, so the clone set is recomputed with WorktreeClones — the
+// exact objects the apply pass stamped (plan §9.1).
+func deleteWorktreeClones(ctx context.Context, runs []worktreeRun, downDeps DownDeps) error {
+	errs := []error{}
+	for _, run := range runs {
+		if run.tlr.Error != nil {
+			continue
+		}
+		clones, err := kubernetesapply.WorktreeClones(manifestEntities(run.tlr.Manifests), run.name)
+		if err != nil {
+			errs = append(errs, errors.Wrapf(err, "computing worktree clones for %q", run.name))
+			continue
+		}
+		// The clone is a DeepCopy of the stable entity, so it inherits the
+		// stable's annotations: the documented 'tilt.dev/down-policy: keep'
+		// contract (cmd help text) covers clones too.
+		clones, _, err = k8s.Filter(clones, func(e k8s.K8sEntity) (bool, error) {
+			downPolicy, exists := e.Annotations()["tilt.dev/down-policy"]
+			return !exists || downPolicy != "keep", nil
+		})
+		if err != nil {
+			errs = append(errs, errors.Wrapf(err, "filtering worktree clones for %q", run.name))
+			continue
+		}
+		if len(clones) == 0 {
+			continue
+		}
+		if err := downDeps.kClient.Delete(ctx, clones, 0); err != nil {
+			errs = append(errs, errors.Wrapf(err, "deleting worktree clones for %q", run.name))
+		}
+	}
+	return utilerrors.NewAggregate(errs)
+}
+
+// manifestEntities parses every k8s target's YAML across manifests.
+func manifestEntities(manifests []model.Manifest) []k8s.K8sEntity {
+	var entities []k8s.K8sEntity
+	for _, m := range manifests {
+		if !m.IsK8s() {
+			continue
+		}
+		parsed, err := k8s.ParseYAMLFromString(m.K8sTarget().YAML)
+		if err != nil {
+			// k8sToDelete reports parse errors through its own path; here a
+			// malformed worktree YAML can only mean the run was loaded by a
+			// different parse path (e.g. ApplyCmd), and there is nothing to
+			// recompute clones from.
+			continue
+		}
+		entities = append(entities, parsed...)
+	}
+	return entities
 }
 
 func sortManifestsForDeletion(manifests []model.Manifest, enabledManifests []model.ManifestName) []model.Manifest {

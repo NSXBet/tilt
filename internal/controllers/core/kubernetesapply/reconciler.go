@@ -56,6 +56,13 @@ type Reconciler struct {
 
 	// Protected by the mutex.
 	results map[types.NamespacedName]*Result
+
+	// Worktree names this process has ever observed alive (Tiltfile CRs
+	// carrying the tilt.dev/worktree label, plan §9.1). The clone GC pass
+	// prunes only seen names whose CR is gone — a name this process never
+	// saw could belong to another Tilt process and is never swept.
+	// Protected by the mutex.
+	worktreesSeen map[string]bool
 }
 
 func (r *Reconciler) CreateBuilder(mgr ctrl.Manager) (*builder.Builder, error) {
@@ -166,6 +173,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 
 	toDelete := r.garbageCollect(nn, isDisabling)
 	r.bestEffortDelete(ctx, nn, toDelete, gcReason)
+
+	// Clone GC (plan §9.1): prune annotated clones whose worktree Tiltfile
+	// CR is gone. Opportunistic — never fails the reconcile; retried on the
+	// next one. Runs after the owner GC so a deleting KubernetesApply's own
+	// objects are torn down first.
+	r.pruneOrphanClones(ctx)
 
 	newKA, err := r.maybeUpdateStatus(ctx, nn, &ka)
 	if err != nil {
