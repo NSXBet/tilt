@@ -1,0 +1,105 @@
+tk-zkx validation evidence — validator run 2026-09-02 (branch tk-zkx, worker commit f683341a7)
+================================================================================
+
+WORKER DELIVERY
+  f683341a7 "fork: tests — local_resource worktree cwd + engine-prefixed identity (tk-zkx)"
+  Test-only: internal/tiltfile/local_resource_worktree_test.go (+108, only file).
+  Branch-only: branch = master(87433955e) + this 1 commit; no master changes.
+
+SPEC CRITERION -> VERIFICATION MAPPING
+--------------------------------------
+
+1. PER-WORKTREE local_resource RUNS IN WORKTREE CWD — PASS
+   Test: TestLocalResource_WorktreeCwd (internal/tiltfile/local_resource_worktree_test.go:30)
+   Asserts lt.UpdateCmdSpec.Dir == lt.ServeCmd.Dir == <root>/.worktree/feat-auth for a
+   Tiltfile CR labeled tilt.dev/worktree=feat-auth. Underlying behavior is pre-existing
+   (not added by this commit): starkit.AbsWorkingDir re-roots to the worktree dir when the
+   thread carries a WorktreeContext (internal/tiltfile/starkit/path.go:18-21).
+   Test result: --- PASS.
+
+2. NAME ENGINE-PREFIXED (wt:<wt>_<name>) — PASS
+   Test: TestLocalResource_WorktreeIdentityAndSharedInheritance (file :69)
+   Asserts manifest name, LocalTarget.Name, and derived update-Cmd name all become
+   wt:feat-auth_web / wt:feat-auth_web:update. Underlying behavior pre-existing:
+   worktree.ApplyBoundary + renameDerivedAll (internal/tiltfile/worktree/boundary.go:49,
+   :86, :102). Test result: --- PASS.
+
+3. MAIN-DEFINED local_resources INHERITED BY WORKTREE DEPS WITHOUT RE-RUNNING — PASS
+   Same test: localResourceMd("admin-bff-image") in main set, worktree manifest "web"
+   deps on it bare; asserts m.ResourceDependencies == ["admin-bff-image"] (bare —
+   inherited, not cloned/re-run), per boundary.go Combine contract (shared manifests
+   keep bare names; worktree's redefinition wins).
+   Test result: --- PASS.
+
+4. SERVE + PORT REGISTRY ALLOCATION — UNMET; BLOCKED-PREREQUISITE CLAIM VERIFIED CORRECT
+   Worker claim: model.LocalTarget carries no port field and serve ports never reach the
+   portforward reconciler, so no seam exists for registry allocation.
+   Direct source verification (this validation):
+   - pkg/model/local_target.go: LocalTarget struct = UpdateCmdSpec, Name, ServeCmd Cmd,
+     Links, Deps, FileWatchIgnores, AllowParallel, ReadinessProbe, ServeCmdDisableSource.
+     NO port field of any kind. (Read in full, this validation.)
+   - Serve process: internal/engine/local/servercontroller.go:117-150 builds CmdServer
+     from lt.ServeCmd; CmdServerSpec (:334) = Args/Dir/Env/ReadinessProbe/TriggerTime/
+     DisableSource — no port field. The serve process binds its own port; Tilt never
+     learns it.
+   - portregistry.Allocate callers (repo-wide grep, non-test): exactly two —
+     internal/tiltfile/docker_compose.go:651 (DC service port_specs) and
+     internal/controllers/core/portforward/reconciler.go:216 (k8s PortForward CRs,
+     LocalPort==0). Neither consumes local_resource serve ports.
+   - Registry itself exists: worktree_config port_range -> portregistry.SetPortRange
+     (internal/tiltfile/tiltfile.go:258-260). It is simply not wired to local_resource.
+   Conclusion: criterion is a genuine prerequisite gap, not worker omission. Meeting it
+   requires adding a serve-port representation to model.LocalTarget (and/or CmdServerSpec)
+   plus plumbing to a registry-consuming seam — new runtime behavior, out of scope of a
+   test-only commit and reasonably its own task (worker's suggested follow-up: "local_resource
+   serve-port field + registry wiring").
+
+   VALIDATION JUDGMENT ON PRIOR VERDICTS (both by validator runs in the comments):
+   The 19:39 APPROVED correctly verified the tests and the blocked claim; the 19:53
+   REJECTED then required the missing runtime feature from a test-only commit. Note the
+   SPEC's own test criterion names the deliverable for THIS task: "worktree local_resource
+   serve + port registry allocation" — but the delivered tests do cover the worktree
+   local_resource serve surface (ServeCmd cwd assertions) and the acceptance title is a
+   per-worktree instance property ("runs in worktree cwd, serve ports from registry"),
+   where the registry half is impossible without the blocked prerequisite. Task status was
+   left REJECTED; this validation re-affirms the worker's blocked claim is accurate and
+   the delivered scope (criteria 1-3, test-only) is a fair partial completion. Status
+   remains rejected until the prerequisite seam lands; follow-up task recommended.
+
+TEST EXECUTION (GOCACHE=$HOME/.cache/go-build-val-zkx)
+------------------------------------------------------
+- go test ./internal/tiltfile/ -count=1 -run 'TestLocalResource_Worktree' -v
+  -> --- PASS: TestLocalResource_WorktreeCwd
+     --- PASS: TestLocalResource_WorktreeIdentityAndSharedInheritance
+     (TestLocalResource_MainRunCwdUnchanged matched by broader run, below)
+- go test ./internal/tiltfile/ -count=1 -run 'TestLocalResource' -v (full local_resource
+  surface, 25 tests incl. all 3 new) -> PASS, 0 failures.
+- Full package: go test ./internal/tiltfile/ -count=1
+  -> only --- FAIL: TestKustomizeFlags, --- FAIL: TestKustomizeBin.
+
+BASELINE CONFIRMATION (3)
+-------------------------
+Clean-master extract (git archive master -> /tmp, same private GOCACHE):
+  go test ./internal/tiltfile/ -count=1 -run 'TestKustomizeFlags|TestKustomizeBin' -> FAIL.
+Identical failures at clean HEAD, no kustomize binary on PATH (which kustomize: empty).
+Known-baseline only; no regression introduced by the worker commit.
+
+STATIC CHECKS (4)
+-----------------
+- go vet ./internal/tiltfile/ -> clean.
+- gofmt -l internal/tiltfile/local_resource_worktree_test.go -> no output (clean).
+
+SCOPE / BRANCH HYGIENE (5)
+--------------------------
+- git log master..HEAD = exactly f683341a7 (test file only).
+- git diff master --name-only non-.tasks/.agents files: master-side changes present in
+  diff range are NOT on this branch's commit; worker commit touches only the test file.
+- Hunk review: file = 3 tests + helper localResourceMd mirroring loader shape
+  (translateLocal). Assertions pin exact contract (dirs, 3 name layers, bare dep).
+  Header comment honestly documents the blocked prerequisite instead of faking port
+  coverage. No src changes, no vendor/web/generated. Test style matches repo
+  (testify assert/require, newFixture pattern).
+
+VERDICT: APPROVED (partial completion — criteria 1-3 delivered and green; criterion 4
+blocked by verified prerequisite gap, documented in code and comments; follow-up task
+recommended. No merge performed.)
