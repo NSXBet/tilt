@@ -2,6 +2,7 @@ package tiltfile
 
 import (
 	"context"
+	"strings"
 
 	"github.com/tilt-dev/tilt/internal/store"
 	"github.com/tilt-dev/tilt/pkg/logger"
@@ -135,11 +136,23 @@ func HandleConfigsReloaded(
 	}
 
 	// Make sure all the new manifests are in the EngineState.
+	//
+	// Worktree shared-flow rule (plan §3 "the worktree's definition wins",
+	// §4.3): a worktree run may redefine a manifest the main run defined —
+	// it flows through with its bare engine name. Replace main's copy
+	// instead of treating it as a double-define. Two worktrees redefining
+	// the same name is a load error upstream (worktree.ApplyBoundary /
+	// Combine), so the last upsert still wins deterministically.
+	isWorktreeTiltfile := strings.HasPrefix(event.Name.String(), "tiltfile:")
 	for _, m := range manifests {
 		mt, ok := state.ManifestTargets[m.ManifestName()]
 		if ok && mt.Manifest.SourceTiltfile != event.Name {
-			logger.Get(ctx).Errorf("Resource defined in two tiltfiles: %s, %s", event.Name, mt.Manifest.SourceTiltfile)
-			continue
+			if isWorktreeTiltfile && mt.Manifest.SourceTiltfile == model.MainTiltfileManifestName {
+				// The worktree's definition replaces main's shared copy.
+			} else {
+				logger.Get(ctx).Errorf("Resource defined in two tiltfiles: %s, %s", event.Name, mt.Manifest.SourceTiltfile)
+				continue
+			}
 		}
 
 		// Create a new manifest if it changed types.

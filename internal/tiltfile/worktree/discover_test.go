@@ -136,6 +136,7 @@ func initGitRepo(t *testing.T) string {
 	require.NoError(t, err)
 	runGit(t, root, "init", "-q", ".")
 	runGit(t, root, "-c", "user.name=t", "-c", "user.email=t@t.local",
+		"-c", "commit.gpgsign=false",
 		"commit", "--allow-empty", "-q", "-m", "init")
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	return root

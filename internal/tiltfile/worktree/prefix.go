@@ -5,7 +5,12 @@ import (
 )
 
 const (
-	// Prefix for engine-internal names of worktree-run manifests.
+	// Prefix for engine-internal names of worktree-run manifests. Clone
+	// names join with '_' (not '/'): the engine-internal name doubles as
+	// apiserver object name (UIResource/KubernetesApply/etc. are keyed by
+	// manifest name), and the tilt-apiserver's BeforeCreate rejects '/' in
+	// names (IsPathSegmentName). ':' is legal — the main Tiltfile CR is
+	// "(Tiltfile)" and FileWatches are "configs:(Tiltfile)".
 	namePrefix = "wt:"
 
 	// Prefix of the SourceTiltfile value for manifests produced by a
@@ -79,9 +84,11 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 }
 
 // ManifestName returns the engine-internal name of a worktree-run manifest:
-// `wt:<worktree>/<name>`.
+// `wt:<worktree>_<name>`. Path-segment safe (see namePrefix above), so it
+// can serve directly as apiserver object name (plan §4.3: engine-internal
+// prefix preserves every name-keyed subsystem).
 func ManifestName(worktree, name string) model.ManifestName {
-	return model.ManifestName(namePrefix + worktree + "/" + name)
+	return model.ManifestName(namePrefix + worktree + "_" + name)
 }
 
 func containsName(names []model.ManifestName, name model.ManifestName) bool {

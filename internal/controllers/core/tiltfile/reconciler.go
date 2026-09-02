@@ -30,6 +30,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/store/buildcontrols"
 	"github.com/tilt-dev/tilt/internal/store/tiltfiles"
 	"github.com/tilt-dev/tilt/internal/tiltfile"
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/internal/timecmp"
 	"github.com/tilt-dev/tilt/pkg/apis"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
@@ -365,7 +366,23 @@ func (r *Reconciler) handleLoaded(
 	tf *v1alpha1.Tiltfile,
 	entry *BuildEntry,
 	tlr *tiltfile.TiltfileLoadResult) error {
-	// TODO(nick): Rewrite to handle multiple tiltfiles.
+	// The engine-prefix rewrite pass (plan §4.3, §7.3): worktree-run
+	// manifests are rewritten to engine-internal clone names
+	// (`wt:<worktree>_<name>`) at this boundary, before they flow into the
+	// apiserver (updateOwnedObjects) and engine state
+	// (ConfigsReloadedAction). The main run — bare names — passes through
+	// unchanged. This is the multi-tiltfile rewrite of the old
+	// TODO(nick) comment at this site: each worktree's Tiltfile CR
+	// re-executes the same root Tiltfile, and this pass namespaces its
+	// results into the engine.
+	worktreeName := tf.Labels[worktree.LabelWorktree]
+	if worktreeName != "" && tlr.Error == nil {
+		if err := r.applyWorktreeBoundary(ctx, nn, tlr, worktreeName); err != nil {
+			tlr.Error = err
+			tlr.Manifests = nil
+		}
+	}
+
 	changeEnabledResources := entry.ArgsChanged && tlr != nil && tlr.Error == nil
 	err := updateOwnedObjects(ctx, r.ctrlClient, nn, tf, tlr, changeEnabledResources, r.ciTimeoutFlag, r.engineMode,
 		r.defaultK8sConnection())
@@ -408,6 +425,38 @@ func (r *Reconciler) handleLoaded(
 	// API objects.
 	r.requeuer.Add(nn)
 
+	return nil
+}
+
+// applyWorktreeBoundary runs the engine-prefix rewrite pass over one
+// worktree run's load result (plan §4.3): it rewrites the run's manifests in
+// place to clone names, resolving deps against the main run's manifest set
+// (same-worktree first, else main-defined). The main CR's last successful
+// result supplies the shared (main-defined) name set; a main result that
+// errored or hasn't produced manifests leaves the set empty — bare deps then
+// cannot resolve and the pass reports the load error.
+//
+// Caller must hold r.mu (handleLoaded runs inside Reconcile).
+func (r *Reconciler) applyWorktreeBoundary(
+	ctx context.Context,
+	nn types.NamespacedName,
+	tlr *tiltfile.TiltfileLoadResult,
+	worktreeName string) error {
+	var mainManifests []model.Manifest
+	mainNN := types.NamespacedName{Name: model.MainTiltfileManifestName.String()}
+	if mainRun, ok := r.runs[mainNN]; ok && mainRun.tlr != nil && mainRun.tlr.Error == nil {
+		mainManifests = mainRun.tlr.Manifests
+	}
+
+	result, err := worktree.ApplyBoundary(mainManifests, worktree.RunResult{
+		Name:      worktreeName,
+		Manifests: tlr.Manifests,
+	})
+	if err != nil {
+		return err
+	}
+	tlr.Manifests = result.Manifests
+	logger.Get(ctx).Debugf("worktree %q: rewrote %d manifest(s) at the engine boundary", worktreeName, len(result.Manifests))
 	return nil
 }
 

@@ -11,7 +11,7 @@ import (
 
 // Phase 1 acceptance: engine-prefix rewrite at the Tiltfile boundary
 // (plan §4.3). Worktree-run manifests are engine-internal prefixed
-// `wt:<name>/<name>`; author-visible names stay bare. Deps resolve
+// `wt:<name>_<name>`; author-visible names stay bare. Deps resolve
 // same-worktree first, else main-defined.
 
 func TestApplyPrefix_ManifestAndDeps(t *testing.T) {
@@ -20,9 +20,9 @@ func TestApplyPrefix_ManifestAndDeps(t *testing.T) {
 
 	out := applyPrefix([]model.Manifest{{Name: "postgres"}, res}, "feat-auth", map[model.ManifestName]bool{"postgres": true})
 
-	require.Equal(t, model.ManifestName("wt:feat-auth/incidents-admin"), out[1].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_incidents-admin"), out[1].Name)
 	// "api" is worktree-owned (in wtOwned) → rewritten to the clone name
-	require.Equal(t, []model.ManifestName{"wt:feat-auth/api"}, out[1].ResourceDependencies)
+	require.Equal(t, []model.ManifestName{"wt:feat-auth_api"}, out[1].ResourceDependencies)
 	// "postgres" is main-defined (shared) → dep stays bare
 	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, out[0].ResourceDependencies)
@@ -34,7 +34,7 @@ func TestApplyPrefix_ManifestAndDeps(t *testing.T) {
 // tiltfile loader's job (local_resource already errors, local_resource.go:142).
 func TestApplyPrefix_CloneOfMainManifest(t *testing.T) {
 	out := applyPrefix([]model.Manifest{{Name: "incidents-admin"}}, "feat-auth", nil)
-	require.Equal(t, model.ManifestName("wt:feat-auth/incidents-admin"), out[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_incidents-admin"), out[0].Name)
 }
 
 // SourceTiltfile: the manifest records which Tiltfile produced it, so
@@ -66,7 +66,7 @@ func TestApplyPrefix_SharedManifestKeepsBareNameWithSelfDep(t *testing.T) {
 	out := applyPrefix([]model.Manifest{m}, "feat-auth", map[model.ManifestName]bool{"postgres": true})
 	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
 	// "api" is not main-defined -> rewritten to this worktree's clone name.
-	require.Equal(t, []model.ManifestName{"wt:feat-auth/api", "postgres"}, out[0].ResourceDependencies)
+	require.Equal(t, []model.ManifestName{"wt:feat-auth_api", "postgres"}, out[0].ResourceDependencies)
 
 	// Self-dep already present is not duplicated.
 	m2 := model.Manifest{Name: "postgres"}
@@ -128,18 +128,18 @@ func TestApplyPrefix_DepRewriteMatrix(t *testing.T) {
 	)
 	require.Equal(t, []model.ManifestName{
 		"postgres",           // main-defined: shared, stays bare
-		"wt:feat-auth/web",   // not main-defined: own clone
-		"wt:feat-auth/ghost", // not main-defined: unknown falls outside wtOwned
+		"wt:feat-auth_web",   // not main-defined: own clone
+		"wt:feat-auth_ghost", // not main-defined: unknown falls outside wtOwned
 	}, out[0].ResourceDependencies)
 }
 
 // tk-ntx acceptance: a nil-deps manifest stays nil-deps (no spurious empty
-// slice), and ManifestName composes the `wt:<worktree>/<name>` grammar used
+// slice), and ManifestName composes the `wt:<worktree>_<name>` grammar used
 // by validate.go's isCloneName.
 func TestApplyPrefix_NilDepsStaysNil(t *testing.T) {
 	out := applyPrefix([]model.Manifest{{Name: "web"}}, "feat-auth", map[model.ManifestName]bool{})
 	require.Nil(t, out[0].ResourceDependencies)
 
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), ManifestName("feat-auth", "web"))
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), ManifestName("feat-auth", "web"))
 	require.True(t, strings.HasPrefix(string(ManifestName("feat-auth", "web")), "wt:"))
 }

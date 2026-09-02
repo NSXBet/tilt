@@ -34,9 +34,9 @@ func TestCombine_SharedAndCloneDeps(t *testing.T) {
 	// Main's manifest passes through unchanged.
 	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
 	// Worktree clones are prefixed; deps resolved: shared bare, own clone.
-	require.Equal(t, model.ManifestName("wt:feat-auth/api"), out[1].Name)
-	require.Equal(t, []model.ManifestName{"postgres", "wt:feat-auth/web"}, out[1].ResourceDependencies)
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), out[2].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out[1].Name)
+	require.Equal(t, []model.ManifestName{"postgres", "wt:feat-auth_web"}, out[1].ResourceDependencies)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), out[2].Name)
 }
 
 // Same worktree name twice → load error (plan §3: two worktrees with the
@@ -73,8 +73,8 @@ func TestCombine_SameNameAcrossWorktreesDistinctClones(t *testing.T) {
 	)
 	require.NoError(t, err)
 	names := []model.ManifestName{out[1].Name, out[2].Name}
-	require.Contains(t, names, model.ManifestName("wt:feat-auth/api"))
-	require.Contains(t, names, model.ManifestName("wt:fix-ui/api"))
+	require.Contains(t, names, model.ManifestName("wt:feat-auth_api"))
+	require.Contains(t, names, model.ManifestName("wt:fix-ui_api"))
 }
 
 // A worktree's definition of a main-defined resource wins: the shared
@@ -125,7 +125,7 @@ func TestCombine_UndefinedDepError(t *testing.T) {
 // not depend on a worktree clone.
 func TestCombine_OneWayDepViolation(t *testing.T) {
 	_, err := Combine(
-		[]model.Manifest{md("postgres", "wt:feat-auth/api")},
+		[]model.Manifest{md("postgres", "wt:feat-auth_api")},
 		[]RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("api")}}},
 	)
 	require.ErrorContains(t, err, "cannot depend on worktree-owned resources")
@@ -151,7 +151,7 @@ func TestCombine_ResourceDependedByTwoWorktreesSharedFromMain(t *testing.T) {
 func TestCombine_NilMainStillValidates(t *testing.T) {
 	out, err := Combine(nil, []RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("web")}}})
 	require.NoError(t, err)
-	require.Equal(t, model.ManifestName("wt:feat-auth/web"), out[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), out[0].Name)
 
 	_, err = Combine(nil, []RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("web", "ghost")}}})
 	require.ErrorContains(t, err, `depends on "ghost"`)
