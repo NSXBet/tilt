@@ -3,6 +3,7 @@ package webview
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -233,6 +234,51 @@ func ToUIResourceList(state store.EngineState, disableSources map[string][]v1alp
 	return ret, nil
 }
 
+// gatewayHostSuffix is the shared gateway domain (plan §6): the HUD server's
+// host-router serves <wt>.tilt.localhost at the worktree's HTTP endpoint.
+const gatewayHostSuffix = ".tilt.localhost"
+
+// withGatewayEndpointLinks augments the endpoint links of a worktree resource
+// with the gateway URL (<wt>.tilt.localhost:<web port>) for its first HTTP
+// endpoint (plan §8: "Endpoint links render gateway URLs"). The raw
+// localhost:<registry port> links are ALWAYS kept too (plan §12: browsers
+// behind corporate proxies can't resolve *.localhost). Main-run resources are
+// returned unchanged.
+func withGatewayEndpointLinks(name model.ManifestName, m model.Manifest, endpoints []model.Link) []v1alpha1.UIResourceLink {
+	links := ToAPILinks(endpoints)
+
+	wt := m.Labels[v1alpha1.LabelWorktree]
+	if wt == "" || name == model.MainTiltfileManifestName || len(endpoints) == 0 {
+		return links
+	}
+
+	// The gateway proxies HTTP only (plan §6): augment the first endpoint
+	// whose URL has an http scheme. Its path is preserved; the raw port link
+	// stays in place as the fallback.
+	for i, ln := range endpoints {
+		u, err := url.Parse(ln.URLString())
+		if err != nil || u.Scheme != "http" || u.Host == "" {
+			continue
+		}
+		port := u.Port()
+		if port == "" {
+			port = "80"
+		}
+		gw, err := url.Parse(fmt.Sprintf("http://%s%s:%s%s", wt, gatewayHostSuffix, port, u.Path))
+		if err != nil {
+			continue
+		}
+		// Gateway link goes first, mirroring the worktree host as the
+		// preferred entry point; raw fallbacks follow.
+		gwLink := v1alpha1.UIResourceLink{URL: gw.String(), Name: ln.Name}
+		links = append(links, v1alpha1.UIResourceLink{})
+		copy(links[i+1:], links[i:])
+		links[i] = gwLink
+		break
+	}
+	return links
+}
+
 func disableResourceStatus(disableSources []v1alpha1.DisableSource, s store.EngineState) (v1alpha1.DisableResourceStatus, error) {
 	getCM := func(name string) (v1alpha1.ConfigMap, error) {
 		cm, ok := s.ConfigMaps[name]
@@ -283,7 +329,7 @@ func toUIResource(mt *store.ManifestTarget, s store.EngineState, disableSources 
 			BuildHistory:      bh,
 			PendingBuildSince: metav1.NewMicroTime(pendingBuildSince),
 			CurrentBuild:      cb,
-			EndpointLinks:     ToAPILinks(endpoints),
+			EndpointLinks:     withGatewayEndpointLinks(mn, mt.Manifest, endpoints),
 			Specs:             specs,
 			TriggerMode:       int32(mt.Manifest.TriggerMode),
 			HasPendingChanges: hasPendingChanges,

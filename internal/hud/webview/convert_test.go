@@ -165,6 +165,72 @@ func TestStateToWebViewLocalResourceLink(t *testing.T) {
 	assert.Equal(t, expected, res.EndpointLinks)
 }
 
+func TestStateToWebViewWorktreeGatewayEndpointLinks(t *testing.T) {
+	// Worktree resource (plan §8): gateway URL <wt>.tilt.localhost:<port> for
+	// the first HTTP endpoint, raw localhost links kept as fallback (plan §12).
+	m := model.Manifest{
+		Name: "foo",
+	}.WithLabels(map[string]string{v1alpha1.LabelWorktree: "feat-auth"}).
+		WithDeployTarget(model.K8sTarget{
+			KubernetesApplySpec: v1alpha1.KubernetesApplySpec{
+				PortForwardTemplateSpec: &v1alpha1.PortForwardTemplateSpec{
+					Forwards: []v1alpha1.Forward{
+						{LocalPort: 18100, ContainerPort: 5000},
+						{LocalPort: 18101, ContainerPort: 5001, Name: "debugger"},
+					},
+				},
+			},
+		})
+	state := newState([]model.Manifest{m})
+	v := completeProtoView(t, *state)
+
+	res, ok := findResource(m.Name, v)
+	require.True(t, ok)
+	expected := []v1alpha1.UIResourceLink{
+		v1alpha1.UIResourceLink{URL: "http://feat-auth.tilt.localhost:18100/"},
+		v1alpha1.UIResourceLink{URL: "http://localhost:18100/"},
+		v1alpha1.UIResourceLink{URL: "http://localhost:18101/", Name: "debugger"},
+	}
+	assert.Equal(t, expected, res.EndpointLinks)
+}
+
+func TestStateToWebViewMainRunEndpointsUnchanged(t *testing.T) {
+	// Main-run resource: no gateway augmentation, exactly today's links.
+	m := model.Manifest{
+		Name: "foo",
+	}.WithDeployTarget(model.K8sTarget{
+		KubernetesApplySpec: v1alpha1.KubernetesApplySpec{
+			PortForwardTemplateSpec: &v1alpha1.PortForwardTemplateSpec{
+				Forwards: []v1alpha1.Forward{
+					{LocalPort: 8000, ContainerPort: 5000},
+				},
+			},
+		},
+	})
+	state := newState([]model.Manifest{m})
+	v := completeProtoView(t, *state)
+
+	res, ok := findResource(m.Name, v)
+	require.True(t, ok)
+	expected := []v1alpha1.UIResourceLink{
+		v1alpha1.UIResourceLink{URL: "http://localhost:8000/"},
+	}
+	assert.Equal(t, expected, res.EndpointLinks)
+}
+
+func TestWithGatewayEndpointLinksTCPSkipped(t *testing.T) {
+	// A worktree resource with only non-HTTP endpoints (e.g. postgres over
+	// plain TCP, plan §6) gets no gateway link.
+	m := model.Manifest{
+		Name: "db",
+	}.WithLabels(map[string]string{v1alpha1.LabelWorktree: "feat-auth"})
+	links := withGatewayEndpointLinks(m.Name, m, []model.Link{
+		model.MustNewLink("postgres://localhost:18199", ""),
+	})
+	expected := []v1alpha1.UIResourceLink{{URL: "postgres://localhost:18199"}}
+	assert.Equal(t, expected, links)
+}
+
 func TestStateToViewUnresourcedYAMLManifest(t *testing.T) {
 	mn := model.UnresourcedYAMLManifestName
 	m := model.Manifest{Name: mn}.WithDeployTarget(k8s.MustTarget(mn.TargetName(), testyaml.SanchoYAML))
