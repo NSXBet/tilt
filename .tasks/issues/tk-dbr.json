@@ -4,14 +4,14 @@
   "id": "tk-dbr",
   "title": "Gateway targets clone Services vs registry ports|Gateway resolves worktree endpoints from clone Service port-forwards or direct registry ports — same mechanism either way (plan 6). TCP services (postgres): plain localhost:<registry port> in endpoint links. Test: gateway routes to worktree clone, not stable.",
   "description": "",
-  "status": "open",
+  "status": "ready-to-review",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:28:28.350Z",
-  "updated_at": "2026-08-30T12:52:06.770Z",
+  "updated_at": "2026-09-02T19:34:45.342Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,6 +26,7 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [
     {
@@ -39,6 +40,14 @@
   ],
   "dependency_count": 1,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-4681de0e-a65b-4085-bd5d-303cd02c929a",
+      "issue_id": "tk-dbr",
+      "author": "yuri",
+      "text": "DONE: Herdr worker commit 62468045a; focused smoke test passed. Awaiting review.",
+      "created_at": "2026-09-02T19:34:45.235Z"
+    }
+  ],
+  "comment_count": 1
 }

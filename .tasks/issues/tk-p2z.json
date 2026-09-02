@@ -4,14 +4,14 @@
   "id": "tk-p2z",
   "title": "Endpoint links render gateway URLs|UIResourceStatus.EndpointLinks (uiresource_types.go:161, populated internal/hud/webview/convert.go ~280) gain gateway URLs when gateway enabled; corporate-proxy fallback documented: raw localhost:<registry port> always shown too (plan 12).",
   "description": "",
-  "status": "open",
+  "status": "ready-to-review",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:29:01.871Z",
-  "updated_at": "2026-08-30T12:52:08.099Z",
+  "updated_at": "2026-09-02T19:34:45.600Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -26,6 +26,7 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [
     {
@@ -39,6 +40,14 @@
   ],
   "dependency_count": 1,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-64fbcf91-af93-4cff-a7c0-a00745a08b43",
+      "issue_id": "tk-p2z",
+      "author": "yuri",
+      "text": "DONE: Herdr worker commit 3dc01f49d; focused smoke test passed. Awaiting review.",
+      "created_at": "2026-09-02T19:34:45.488Z"
+    }
+  ],
+  "comment_count": 1
 }
