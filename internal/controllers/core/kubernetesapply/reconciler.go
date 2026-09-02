@@ -432,23 +432,23 @@ func (r *Reconciler) runCmdDeploy(ctx context.Context, spec v1alpha1.KubernetesA
 
 	// Worktree interception (plan §4.1): the apply command's stdout YAML
 	// flows through the same clone-stamping pass as inline YAML, so
-	// apply-cmd deploys get worktree parity by construction. The mutated
-	// entities are applied here (the command applied its own output, but
-	// only Tilt knows the clone names) and returned so GC tracks the clones.
+	// apply-cmd deploys get worktree parity by construction. The stdout is
+	// a `kubectl get`-style round-trip carrying server-assigned fields, so
+	// they are scrubbed before Tilt upserts the full set (stable + clones)
+	// on the user's behalf and returns it for GC tracking.
+	//
+	// In the main run the command applies its own output (existing contract,
+	// unmodified): Tilt only parses and tracks it.
 	if spec.Worktree != "" {
-		entities, err = stampWorktreeClones(entities, spec.Worktree)
+		scrubServerFields(entities)
+		entities = stampWorktreeClones(entities, spec.Worktree)
+
+		deployed, err := r.k8sClient.Upsert(ctx, entities, timeout, k8s.SSAOptions{})
 		if err != nil {
+			r.printAppliedReport(ctx, "Tried to apply objects to cluster:", entities)
 			return nil, err
 		}
-		timeout := spec.Timeout.Duration
-		if timeout == 0 {
-			timeout = v1alpha1.KubernetesApplyTimeoutDefault
-		}
-		if _, err := r.k8sClient.Upsert(ctx, entities, timeout, k8s.SSAOptions{}); err != nil {
-			r.printAppliedReport(ctx, "Tried to apply worktree clones to cluster:", entities)
-			return nil, err
-		}
-		r.printAppliedReport(ctx, "Objects applied to cluster:", entities)
+		entities = deployed
 	}
 
 	r.printAppliedReport(ctx, "Objects applied to cluster:", entities)
@@ -608,10 +608,7 @@ func (r *Reconciler) createEntitiesToDeploy(ctx context.Context,
 	// clones carry everything the stable entities got, computed from the
 	// stable's spec. The main run (Worktree == "") is a no-op.
 	if spec.Worktree != "" {
-		newK8sEntities, err = stampWorktreeClones(newK8sEntities, spec.Worktree)
-		if err != nil {
-			return nil, errors.Wrapf(err, "stamping worktree clones for %q", spec.Worktree)
-		}
+		newK8sEntities = stampWorktreeClones(newK8sEntities, spec.Worktree)
 	}
 
 	return newK8sEntities, nil
@@ -813,15 +810,22 @@ func (r *Reconciler) garbageCollect(nn types.NamespacedName, isDeleting bool) de
 			return deleteSpec{}
 		}
 
-		// the object was deleted (so result is nil) and we have a custom delete cmd, so use that
-		// and skip diffing managed entities entirely
-		//
-		// We assume that the delete cmd deletes all dangling objects.
-		for k := range result.DanglingObjects {
+		// The object was deleted (so result is nil) and we have a custom
+		// delete cmd, so use that and skip diffing managed entities
+		// entirely. We assume the delete cmd deletes all dangling objects
+		// it printed — but worktree clones were applied by Tilt, not the
+		// command, so they are deleted explicitly alongside it.
+		toDelete := make([]k8s.K8sEntity, 0)
+		for k, v := range result.DanglingObjects {
+			if v.Annotations()[v1alpha1.AnnotationWorktree] == "" {
+				continue
+			}
 			delete(result.DanglingObjects, k)
+			toDelete = append(toDelete, v)
 		}
 		result.clearApplyStatus()
 		return deleteSpec{
+			entities:  toDelete,
 			deleteCmd: result.Spec.DeleteCmd,
 			cluster:   result.Cluster,
 		}

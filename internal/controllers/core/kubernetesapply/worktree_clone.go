@@ -3,7 +3,7 @@ package kubernetesapply
 import (
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/tilt-dev/tilt/internal/k8s"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
@@ -41,7 +41,7 @@ func worktreeCloneSuffix(worktree string) string {
 // clones: the bare `worktree` (plan §4.2).
 const worktreeLabelKey = "worktree"
 
-func stampWorkloadClone(e k8s.K8sEntity, worktree string) (k8s.K8sEntity, error) {
+func stampWorkloadClone(e k8s.K8sEntity, worktree string) k8s.K8sEntity {
 	clone := e.DeepCopy()
 
 	// The selector mutation is deliberate (plan §4.2): the clone must NOT
@@ -49,31 +49,40 @@ func stampWorkloadClone(e k8s.K8sEntity, worktree string) (k8s.K8sEntity, error)
 	// InjectLabels never adds NEW keys to selectors (it only fills keys that
 	// already exist, to protect user labels), and the clone needs exactly
 	// the new `worktree=<name>` key in both the pod template and selector.
-	stampPodTemplateSelectors(clone.Obj, worktree)
-	clone.Meta().SetName(clone.Meta().GetName() + worktreeCloneSuffix(worktree))
+	switch o := clone.Obj.(type) {
+	case *appsv1.Deployment:
+		stampPodTemplate(o.Spec.Selector.MatchLabels, &o.Spec.Template, worktree)
+		o.Status = appsv1.DeploymentStatus{}
+	case *appsv1.StatefulSet:
+		stampPodTemplate(o.Spec.Selector.MatchLabels, &o.Spec.Template, worktree)
+		o.Status = appsv1.StatefulSetStatus{}
+	}
 
-	annotations := clone.Meta().GetAnnotations()
+	meta := clone.Meta()
+	meta.SetName(meta.GetName() + worktreeCloneSuffix(worktree))
+	annotations := meta.GetAnnotations()
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
 	annotations[v1alpha1.AnnotationWorktree] = worktree
-	clone.Meta().SetAnnotations(annotations)
+	meta.SetAnnotations(annotations)
 
-	return clone, nil
+	// YAML re-parsed from an apply command's stdout (and some charts) carries
+	// server-assigned fields the apiserver rejects on create: uid,
+	// resourceVersion, creationTimestamp, generation, and the workload
+	// status (zeroed above). Clean() drops the remaining bookkeeping
+	// (managedFields, last-applied-configuration annotation).
+	clone.Meta().SetUID("")
+	clone.Meta().SetResourceVersion("")
+	clone.Meta().SetCreationTimestamp(metav1.Time{})
+	clone.Meta().SetGeneration(0)
+	clone.Clean()
+
+	return clone
 }
 
-// stampPodTemplateSelectors adds the worktree label to every pod template
-// and workload selector of the object. Handles the typed Deployment and
-// StatefulSet shapes parsed from user YAML; other kinds are returned as-is.
-func stampPodTemplateSelectors(obj runtime.Object, worktree string) {
-	switch o := obj.(type) {
-	case *appsv1.Deployment:
-		stampPodTemplate(o.Spec.Selector.MatchLabels, &o.Spec.Template, worktree)
-	case *appsv1.StatefulSet:
-		stampPodTemplate(o.Spec.Selector.MatchLabels, &o.Spec.Template, worktree)
-	}
-}
-
+// stampPodTemplate adds the worktree label to the given selector and pod
+// template of an already-deep-copied workload.
 func stampPodTemplate(selector map[string]string, template *v1.PodTemplateSpec, worktree string) {
 	if selector == nil {
 		return
@@ -90,9 +99,12 @@ func stampPodTemplate(selector map[string]string, template *v1.PodTemplateSpec, 
 	selector[worktreeLabelKey] = worktree
 }
 
-// worktree label — the selector a clone Service must use so cluster DNS
-// <svc>-wt-<worktree> reaches only worktree pods.
-func workloadSelector(selector map[string]string, worktree string) map[string]string {
+// worktreeServiceSelector mirrors the Service's own selector with the
+// worktree label added. Keys must be copied verbatim — a Service may select
+// on labels the workload's selector.matchLabels doesn't repeat (e.g. a
+// template-only label), and dropping them would change what the clone
+// Service routes to.
+func worktreeServiceSelector(selector map[string]string, worktree string) map[string]string {
 	out := make(map[string]string, len(selector)+1)
 	for k, v := range selector {
 		out[k] = v
@@ -101,17 +113,49 @@ func workloadSelector(selector map[string]string, worktree string) map[string]st
 	return out
 }
 
-// cloneService returns a copy of the Service with the given (already
-// worktree-stamped) selector, a suffixed name, and the worktree annotation.
-func cloneService(svc *v1.Service, selector map[string]string, worktree string) *v1.Service {
-	clone := svc.DeepCopy()
-	clone.Spec.Selector = make(map[string]string, len(selector))
-	for k, v := range selector {
-		clone.Spec.Selector[k] = v
+// serviceSelectsWorkload reports whether the Service's selector matches the
+// workload's pod-template labels — i.e. the Service routes to this
+// workload's pods and must get a clone Service alongside the workload
+// clone. Kubernetes matches pods when every selector entry appears in the
+// pod's labels (selector ⊆ pod labels), which is the direction checked
+// here; matching against selector.matchLabels instead would miss Services
+// selecting a subset of the pod labels (chart-shaped YAML, plan §12).
+func serviceSelectsWorkload(selector, templateLabels map[string]string) bool {
+	if len(selector) == 0 || len(templateLabels) == 0 {
+		// An empty selector matches nothing here: selector-less Services
+		// (manual Endpoints / ExternalName) don't route via pod labels.
+		return false
 	}
-	meta := svc.ObjectMeta
-	meta.SetName(meta.GetName() + worktreeCloneSuffix(worktree))
+	for k, v := range selector {
+		if got, ok := templateLabels[k]; !ok || got != v {
+			return false
+		}
+	}
+	return true
+}
 
+// cloneService returns a copy of the Service with the worktree-stamped
+// selector, a suffixed name, and the worktree annotation. Server-assigned
+// fields (clusterIP, nodePort allocations, status) are reset so the clone
+// can be created fresh: they are either rejected on create or would collide
+// with the allocations the stable Service already owns.
+func cloneService(svc *v1.Service, worktree string) *v1.Service {
+	clone := svc.DeepCopy()
+
+	clone.Spec.Selector = worktreeServiceSelector(svc.Spec.Selector, worktree)
+	clone.Spec.ClusterIP = ""
+	clone.Spec.ClusterIPs = nil
+	clone.Spec.HealthCheckNodePort = 0
+	clone.Spec.IPFamilies = nil
+	clone.Spec.IPFamilyPolicy = nil
+	clone.Spec.AllocateLoadBalancerNodePorts = nil
+	for i := range clone.Spec.Ports {
+		clone.Spec.Ports[i].NodePort = 0
+	}
+	clone.Status = v1.ServiceStatus{}
+
+	meta := clone.ObjectMeta
+	meta.SetName(meta.GetName() + worktreeCloneSuffix(worktree))
 	annotations := meta.GetAnnotations()
 	if annotations == nil {
 		annotations = map[string]string{}
@@ -120,93 +164,79 @@ func cloneService(svc *v1.Service, selector map[string]string, worktree string) 
 	meta.SetAnnotations(annotations)
 	clone.ObjectMeta = meta
 
+	k8s.NewK8sEntity(clone).Clean()
+
 	return clone
 }
 
-// workloadNameOf returns the object name when the entity is a cloneable
-// workload (Deployment/StatefulSet), else "".
-func workloadNameOf(e k8s.K8sEntity) string {
-	switch e.Obj.(type) {
-	case *appsv1.Deployment, *appsv1.StatefulSet:
-		return e.Meta().GetName()
-	}
-	return ""
-}
-
-// workloadMatchesService reports whether the Service's selector matches the
-// workload's (unmutated) matchLabels — i.e. the Service selects this
-// workload and must get a clone Service alongside the workload clone.
-func workloadMatchesService(svc *v1.Service, matchLabels map[string]string) bool {
-	if len(svc.Spec.Selector) == 0 || len(matchLabels) == 0 {
-		return false
-	}
-	for k, v := range matchLabels {
-		if got, ok := svc.Spec.Selector[k]; !ok || got != v {
-			return false
-		}
-	}
-	return true
-}
-
-// stampWorktreeClones returns the entities to apply for a worktree run: the
-// original entities (stable, untouched) plus one stamped clone per workload
-// and one clone per Service selecting a stamped workload.
-func stampWorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity, error) {
-	// Stable name -> workload matchLabels, for Service clone matching.
-	matchLabels := map[string]map[string]string{}
+// stampWorktreeClones returns the entities to apply for a worktree run:
+// the stable entities (untouched, in order) followed by one clone per
+// Service selecting a stamped workload and one stamped clone per workload
+// (clone Services before workload clones, so the clone Service exists when
+// the clone pods are created). Chart-shaped YAML (plan §12) shares pod
+// labels across sibling workloads, so a Service may select several
+// workloads and still gets exactly one clone Service.
+func stampWorktreeClones(entities []k8s.K8sEntity, worktree string) []k8s.K8sEntity {
+	// Stable workload name -> pod-template labels, for Service matching.
+	templateLabels := map[string]map[string]string{}
 	for _, e := range entities {
-		var m map[string]string
-		switch obj := e.Obj.(type) {
+		var labels map[string]string
+		switch o := e.Obj.(type) {
 		case *appsv1.Deployment:
-			m = obj.Spec.Selector.MatchLabels
+			labels = o.Spec.Template.Labels
 		case *appsv1.StatefulSet:
-			m = obj.Spec.Selector.MatchLabels
+			labels = o.Spec.Template.Labels
 		default:
 			continue
 		}
-		if len(m) > 0 {
-			matchLabels[e.Meta().GetName()] = m
-		}
+		templateLabels[e.Meta().GetName()] = labels
 	}
+	out := make([]k8s.K8sEntity, 0, len(entities))
+	out = append(out, entities...)
 
-	cloneCount := len(matchLabels)
-	svcClones := make([]k8s.K8sEntity, 0, cloneCount)
-	if cloneCount > 0 {
-		for _, e := range entities {
-			svc, ok := e.Obj.(*v1.Service)
-			if !ok {
-				continue
-			}
-			for _, labels := range matchLabels {
-				if !workloadMatchesService(svc, labels) {
-					continue
-				}
-				clone := cloneService(svc, workloadSelector(labels, worktree), worktree)
-				svcClones = append(svcClones, k8s.NewK8sEntity(clone))
+	// Clone Services first, so they exist when the workload clones
+	// create their pods.
+	for _, e := range entities {
+		svc, ok := e.Obj.(*v1.Service)
+		if !ok {
+			continue
+		}
+		matched := false
+		for _, labels := range templateLabels {
+			if serviceSelectsWorkload(svc.Spec.Selector, labels) {
+				matched = true
 				break
 			}
 		}
+		if matched {
+			out = append(out, k8s.NewK8sEntity(cloneService(svc, worktree)))
+		}
 	}
 
-	out := make([]k8s.K8sEntity, 0, len(entities)+cloneCount+len(svcClones))
-	out = append(out, entities...)
 	for _, e := range entities {
 		// N.B. match on KIND, not just name: chart-shaped YAML commonly gives
 		// the Service and the workload the same object name ("sancho"), so a
 		// name-keyed lookup would stamp the Service as a workload clone too.
-		if workloadNameOf(e) == "" {
-			continue
+		switch e.Obj.(type) {
+		case *appsv1.Deployment, *appsv1.StatefulSet:
+			out = append(out, stampWorkloadClone(e, worktree))
 		}
-		if _, ok := matchLabels[e.Meta().GetName()]; !ok {
-			continue
-		}
-		clone, err := stampWorkloadClone(e, worktree)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, clone)
 	}
-	out = append(out, svcClones...)
 
-	return out, nil
+	return out
+}
+
+// scrubServerFields strips the server-assigned fields a re-parsed apply
+// round-trip carries (uid, resourceVersion, creationTimestamp, generation)
+// so the entities can be upserted on the user's behalf — the API server
+// rejects them on create. Bookkeeping (managedFields, last-applied
+// annotation) is dropped by Clean.
+func scrubServerFields(entities []k8s.K8sEntity) {
+	for _, e := range entities {
+		e.Meta().SetUID("")
+		e.Meta().SetResourceVersion("")
+		e.Meta().SetCreationTimestamp(metav1.Time{})
+		e.Meta().SetGeneration(0)
+		e.Clean()
+	}
 }
