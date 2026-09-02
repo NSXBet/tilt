@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tilt-dev/tilt/internal/container"
+	"github.com/tilt-dev/tilt/pkg/apis"
 	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/model"
 )
@@ -193,4 +194,200 @@ func TestApplyBoundary_SelectorInputNotMutated(t *testing.T) {
 
 	require.Equal(t, "registry.example.com/api", in[0].ImageTargets[0].ImageMapSpec.Selector,
 		"input ImageMap selector must stay bare")
+}
+
+// k8sMd builds the full clone shape a worktree run produces for
+// docker_build + k8s_resource, mirroring the loader exactly:
+//   - the K8s deploy target's name is the BARE manifest name
+//     (tiltfile_state.go k8sDeployTarget(mn.TargetName(), ...)),
+//   - its ImageMaps list carries the load-time BARE ref-derived ImageMap
+//     name — SANITIZED, apis.SanitizeName(ref), exactly what
+//     builder.ImageMapName() feeds r.imageMapDeps (WithImageDependencies).
+func k8sMd(name string, bareImageMapNames ...string) model.Manifest {
+	m := boundaryMd(name)
+	iTarget := m.ImageTargets[0]
+	iTarget = iTarget.WithDockerImage(v1alpha1.DockerImageSpec{Context: "."})
+	m.ImageTargets = []model.ImageTarget{iTarget}
+	kTarget := model.K8sTarget{Name: model.TargetName(name)}.
+		WithImageDependencies(bareImageMapNames)
+	m = m.WithDeployTarget(kTarget)
+	return m
+}
+
+// dcMd builds the docker-compose clone shape, mirroring the loader
+// (docker_compose.go: DockerComposeTarget{Name: TargetName(service.Name)},
+// WithImageMapDeps(FilterLiveUpdateOnly(svc.ImageMapDeps, ...))).
+func dcMd(name string, bareImageMapNames ...string) model.Manifest {
+	m := boundaryMd(name)
+	iTarget := m.ImageTargets[0]
+	iTarget = iTarget.WithDockerImage(v1alpha1.DockerImageSpec{Context: "."})
+	m.ImageTargets = []model.ImageTarget{iTarget}
+	dcTarget := model.DockerComposeTarget{Name: model.TargetName(name)}.
+		WithImageMapDeps(bareImageMapNames)
+	m = m.WithDeployTarget(dcTarget)
+	return m
+}
+
+// bareImageMapName mirrors the load-time stamping: the ImageMap name is the
+// SANITIZED selector (apis.SanitizeName in ImageTarget.ID).
+func bareImageMapName(ref string) string {
+	return apis.SanitizeName(ref)
+}
+
+// BREAK A regression (validator repro TestReproCloneK8sImageMapsStale): the
+// pass must rewrite the clone deploy target's ImageMaps list to the scoped
+// names, or the K8sTarget.DependencyIDs() keep referencing bare names that
+// no longer exist (ImageMap CRs register scoped) and the production
+// sequence hard-fails in TopologicalSort.
+func TestApplyBoundary_CloneK8sDeployImageMapsScoped(t *testing.T) {
+	main := []model.Manifest{boundaryMd("postgres")}
+	out, err := ApplyBoundary(main, RunResult{
+		Name:      "feat-auth",
+		Manifests: []model.Manifest{k8sMd("api", bareImageMapName("registry.example.com/api"))},
+	})
+	require.NoError(t, err)
+
+	m := out.Manifests[0]
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), m.Name)
+	kTarget := m.K8sTarget()
+	require.Equal(t, []string{"registry.example.com_api-wt-feat-auth"}, kTarget.ImageMaps,
+		"clone K8s deploy target's ImageMaps list must be scoped to the worktree")
+
+	// The exact production failure shape: InferLiveUpdateSelectors (updateOwnedObjects,
+	// runs after ApplyBoundary in handleLoaded) builds the target graph from
+	// DependencyIDs — the rewritten list must resolve.
+	require.NoError(t, m.InferLiveUpdateSelectors())
+}
+
+// BREAK A regression, DC path: DockerComposeTarget.Spec.ImageMaps scope too.
+func TestApplyBoundary_CloneDCDeployImageMapsScoped(t *testing.T) {
+	out, err := ApplyBoundary(nil, RunResult{
+		Name:      "feat-auth",
+		Manifests: []model.Manifest{dcMd("api", bareImageMapName("registry.example.com/api"))},
+	})
+	require.NoError(t, err)
+
+	m := out.Manifests[0]
+	dcTarget := m.DockerComposeTarget()
+	require.Equal(t, []string{"registry.example.com_api-wt-feat-auth"}, dcTarget.Spec.ImageMaps,
+		"clone DC deploy target's ImageMaps list must be scoped to the worktree")
+	require.NoError(t, m.InferLiveUpdateSelectors())
+}
+
+// BREAK B regression (validator repro TestReproSharedRedefinitionDepsError):
+// a shared (bare-named) redefinition carrying multi-stage deps must pass
+// through with bare identity — the deps block is clone-gated like the
+// selector block.
+func TestApplyBoundary_SharedRedefinitionDepsStaysBare(t *testing.T) {
+	// The shared redefinition's dep graph points at MAIN's base-image
+	// ImageMap (bare). Main keeps its bare identity (it is not a clone),
+	// and the graph is per-manifest — so the run's manifest must carry the
+	// base target alongside the dependent one, exactly as the loader
+	// (imgTargetsForDepsHelper) assembles a multi-stage resource.
+	main := []model.Manifest{boundaryMd("postgres")}
+	out, err := ApplyBoundary(main, RunResult{
+		Name: "feat-auth",
+		Manifests: []model.Manifest{
+			// The loader (imgTargetsForDepsHelper) puts a multi-stage
+			// resource's base image target AND the dependent target in the
+			// SAME manifest — the graph is per-manifest, so the base target
+			// must be present for InferLiveUpdateSelectors to resolve.
+			multiStageMd("postgres", "registry.example.com/base"),
+		},
+	})
+	require.NoError(t, err)
+
+	m := out.Manifests[0]
+	require.Equal(t, model.ManifestName("postgres"), m.Name)
+	require.Equal(t, "registry.example.com/base", m.ImageTargets[0].ImageMapSpec.Selector,
+		"base target in the shared redefinition stays bare")
+	require.Equal(t, "registry.example.com/postgres", m.ImageTargets[1].ImageMapSpec.Selector,
+		"dependent target in the shared redefinition stays bare")
+	require.Equal(t, []string{bareImageMapName("registry.example.com/base")}, m.ImageTargets[1].ImageMapDeps(),
+		"shared redefinition's ImageMap deps stay bare")
+}
+
+// multiStageMd is the multi-stage shape the loader produces for a manifest
+// whose Dockerfile FROMs another built image: base target first, then the
+// dependent target with the ImageMap dep.
+func multiStageMd(name string, baseRef string) model.Manifest {
+	base := model.ImageTarget{}
+	base.ImageMapSpec.Selector = baseRef
+	base = base.WithDockerImage(v1alpha1.DockerImageSpec{Context: "."})
+	dep := model.ImageTarget{}
+	dep.ImageMapSpec.Selector = "registry.example.com/" + name
+	dep = dep.WithDockerImage(v1alpha1.DockerImageSpec{Context: "."}).
+		WithImageMapDeps([]string{apis.SanitizeName(baseRef)})
+	m := md(name)
+	m.ImageTargets = []model.ImageTarget{base, dep}
+	return m
+}
+
+// tk-1zq integration criterion (plan §4.4): the full production sequence —
+// boundary rewrite for two worktrees building the SAME Dockerfile, then the
+// updateOwnedObjects pass (InferLiveUpdateSelectors) — yields distinct
+// ImageMaps per worktree, distinct build tags, and leaves main's identity
+// untouched.
+func TestIntegration_TwoWorktreesSameDockerfileDistinctIdentity(t *testing.T) {
+	// Both worktrees re-execute the root Tiltfile: each defines "api" with
+	// the same docker_build ref, and a shared "postgres" flows through.
+	main := []model.Manifest{boundaryMd("postgres")}
+	outA, err := ApplyBoundary(main, RunResult{
+		Name: "feat-auth",
+		Manifests: []model.Manifest{
+			k8sMd("api", bareImageMapName("registry.example.com/api")),
+			boundaryMd("postgres"),
+		},
+	})
+	require.NoError(t, err)
+	outB, err := ApplyBoundary(main, RunResult{
+		Name: "fix-ui",
+		Manifests: []model.Manifest{
+			k8sMd("api", bareImageMapName("registry.example.com/api")),
+			boundaryMd("postgres"),
+		},
+	})
+	require.NoError(t, err)
+
+	// Post-pass, post-updateOwnedObjects: the exact sequence of handleLoaded.
+	manifests := append(append([]model.Manifest{main[0]}, outA.Manifests...), outB.Manifests...)
+	for _, m := range manifests {
+		require.NoError(t, m.InferLiveUpdateSelectors(), "manifest %s must survive the production sequence", m.Name)
+	}
+
+	// Distinct ImageMap identities per worktree.
+	apiA := outA.Manifests[0].ImageTargets[0]
+	apiB := outB.Manifests[0].ImageTargets[0]
+	require.Equal(t, "registry.example.com_api-wt-feat-auth", apiA.ImageMapName())
+	require.Equal(t, "registry.example.com_api-wt-fix-ui", apiB.ImageMapName())
+	require.Equal(t, "registry.example.com/api-wt-feat-auth", apiA.ImageMapSpec.Selector)
+	require.Equal(t, "registry.example.com/api-wt-fix-ui", apiB.ImageMapSpec.Selector)
+
+	// Distinct build tags: the RefSet derives from each scoped selector, so
+	// the same digest lands in different repos per worktree.
+	cluster := &v1alpha1.Cluster{}
+	refsA, err := apiA.Refs(cluster)
+	require.NoError(t, err)
+	taggedA, err := refsA.AddTagSuffix("tilt-d34db33f")
+	require.NoError(t, err)
+	refsB, err := apiB.Refs(cluster)
+	require.NoError(t, err)
+	taggedB, err := refsB.AddTagSuffix("tilt-d34db33f")
+	require.NoError(t, err)
+	require.Equal(t, "registry.example.com/api-wt-feat-auth:tilt-d34db33f", taggedA.LocalRef.String())
+	require.Equal(t, "registry.example.com/api-wt-fix-ui:tilt-d34db33f", taggedB.LocalRef.String())
+	require.NotEqual(t, taggedA.LocalRef.String(), taggedB.LocalRef.String(),
+		"two worktrees building the same Dockerfile must produce distinct tags")
+
+	// Main's (shared postgres) identity is untouched by both runs.
+	sharedA := outA.Manifests[1]
+	sharedB := outB.Manifests[1]
+	require.Equal(t, model.ManifestName("postgres"), sharedA.Name)
+	require.Equal(t, model.ManifestName("postgres"), sharedB.Name)
+	require.Equal(t, "registry.example.com/postgres", sharedA.ImageTargets[0].ImageMapSpec.Selector)
+	require.Equal(t, "registry.example.com/postgres", sharedB.ImageTargets[0].ImageMapSpec.Selector)
+
+	// Clone deploy targets reference their own scoped ImageMap names.
+	require.Equal(t, []string{"registry.example.com_api-wt-feat-auth"}, outA.Manifests[0].K8sTarget().ImageMaps)
+	require.Equal(t, []string{"registry.example.com_api-wt-fix-ui"}, outB.Manifests[0].K8sTarget().ImageMaps)
 }

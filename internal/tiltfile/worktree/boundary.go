@@ -93,7 +93,8 @@ func ApplyBoundary(main []model.Manifest, run RunResult) (BoundaryResult, error)
 // renameDerivedAll re-stamps every name DERIVED from the bare manifest name
 // across the run's own definitions — per-manifest KubernetesApply, DockerImage,
 // LiveUpdate, CmdImage, local_resource update Cmds, target names, and the
-// worktree-scoped ImageMap identity.
+// worktree-scoped ImageMap identity (selectors, image-target deps, and the
+// deploy targets' ImageMaps lists).
 //
 // A no-op for shared manifests (bare names are already path-segment safe and
 // rename to themselves) and correct for clones (each derived name gains the
@@ -130,9 +131,13 @@ func renameDerived(m model.Manifest) (model.Manifest, error) {
 		m.DeployTarget = lt
 	}
 
+	isClone := IsCloneName(m.Name)
+
 	for j := range m.ImageTargets {
 		iTarget := &m.ImageTargets[j]
 
+		// ImageMap identity is ref-derived (ImageTarget.ImageMapName →
+		// ImageTarget.ID → ImageMapSpec.Selector, pkg/model/image_target.go).
 		// Two worktrees building the same Dockerfile produce the same bare
 		// selector — the same ImageMap name — so without scoping they would
 		// share one ImageMap object (and its build-cache lineage) even
@@ -147,7 +152,7 @@ func renameDerived(m model.Manifest) (model.Manifest, error) {
 		// keep the bare selector: they are main's resources — one shared
 		// ImageMap by design (plan §3 shared-hack inheritance) — and their
 		// bare name is not a clone name.
-		if IsCloneName(m.Name) && iTarget.ImageMapSpec.Selector != "" {
+		if isClone && iTarget.ImageMapSpec.Selector != "" {
 			selector, err := WorktreeImageMapSelector(string(m.Name), iTarget.ImageMapSpec.Selector)
 			if err != nil {
 				return model.Manifest{}, err
@@ -166,11 +171,14 @@ func renameDerived(m model.Manifest) (model.Manifest, error) {
 			iTarget.CmdImageName = apis.SanitizeName(
 				derivedObjectName(m.Name, iTarget.ID().Name))
 		}
-		if len(iTarget.ImageMapDeps()) > 0 {
+		if isClone && len(iTarget.ImageMapDeps()) > 0 {
 			// Base-image deps are ImageMap names (ref-derived identities).
 			// Scope them like the target's own identity, so a multi-stage
 			// build inside the worktree consumes the worktree-scoped base
-			// ImageMap (its own cache lineage), never main's.
+			// ImageMap (its own cache lineage), never main's. Clone-gated
+			// like the selector above: shared (bare-named) redefinitions
+			// keep their bare deps — their graphs point at main's shared
+			// ImageMaps.
 			deps := iTarget.ImageMapDeps()
 			scopedDeps := make([]string, 0, len(deps))
 			for _, dep := range deps {
@@ -185,7 +193,80 @@ func renameDerived(m model.Manifest) (model.Manifest, error) {
 		m.ImageTargets[j] = *iTarget
 	}
 
+	// Rewrite the deploy target's ImageMaps list to the scoped names.
+	//
+	// The loader stamps it with the BARE ref-derived ImageMap names
+	// (tiltfile_state.go: WithImageDependencies(FilterLiveUpdateOnly(
+	// r.imageMapDeps, ...)) for K8s; svc.ImageMapDeps for DockerCompose),
+	// and the reconcilers index ImageMap CRs by exactly these names:
+	// NamesToObjects(spec.ImageMaps) in shouldDeployOnReconcile /
+	// ComputeInputHash / indexer keys — and the engine's target graph
+	// resolves K8sTarget.DependencyIDs()/DC DependencyIDs against them
+	// (TopologicalSort). Without this rewrite the deploy target would
+	// reference bare names that no longer exist (the ImageMap CRs register
+	// under scoped names), failing the load in InferLiveUpdateSelectors and
+	// stalling deploys on "not built yet". Clone-gated like the blocks
+	// above: shared redefinitions keep the bare list.
+	if isClone {
+		scoped, err := scopeDeployTargetImageMaps(m.DeployTarget, string(m.Name))
+		if err != nil {
+			return model.Manifest{}, err
+		}
+		m.DeployTarget = scoped
+	}
+
 	return m, nil
+}
+
+// scopeDeployTargetImageMaps rewrites the ImageMap-name lists a deploy
+// target carries (K8sTarget.ImageMaps, DockerComposeTarget.Spec.ImageMaps)
+// to their worktree-scoped forms, matching the scoped image-target identity,
+// and re-stamps the target's own name with the clone manifest name.
+//
+// The loader stamps the target name from the BARE manifest name
+// (tiltfile_state.go k8sDeployTarget(mn.TargetName(), ...);
+// docker_compose.go DockerComposeTarget{Name: TargetName(service.Name)}),
+// and that name is the apiserver lookup key — buildcontrol resolves
+// kTargetNN/dcTargetNN from DeployTarget.ID() against the KubernetesApply /
+// DockerComposeService CRs, which register under the clone name.
+func scopeDeployTargetImageMaps(deployTarget model.TargetSpec, cloneName string) (model.TargetSpec, error) {
+	targetName := model.TargetName(cloneName)
+	switch t := deployTarget.(type) {
+	case model.K8sTarget:
+		scoped, err := scopeImageMapNames(t.ImageMaps, cloneName)
+		if err != nil {
+			return nil, err
+		}
+		t = t.WithImageDependencies(scoped)
+		t.Name = targetName
+		return t, nil
+	case model.DockerComposeTarget:
+		scoped, err := scopeImageMapNames(t.Spec.ImageMaps, cloneName)
+		if err != nil {
+			return nil, err
+		}
+		t = t.WithImageMapDeps(scoped)
+		t.Name = targetName
+		return t, nil
+	default:
+		// LocalTarget and others carry no ImageMaps list.
+		return deployTarget, nil
+	}
+}
+
+func scopeImageMapNames(names []string, cloneName string) ([]string, error) {
+	if len(names) == 0 {
+		return names, nil
+	}
+	scoped := make([]string, 0, len(names))
+	for _, name := range names {
+		s, err := WorktreeImageMapSelector(cloneName, name)
+		if err != nil {
+			return nil, err
+		}
+		scoped = append(scoped, s)
+	}
+	return scoped, nil
 }
 
 // derivedObjectName mirrors the loader's derived-name format
