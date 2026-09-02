@@ -1,0 +1,27 @@
+# tk-jxb validation evidence — clone stamping (plan §4.2)
+date: 2026-09-02; validator: ValidatorJxb; worktree: .worktrees/tk-jxb @ 0dec9b5e6
+
+## Acceptance criteria (from SPEC comment)
+1. Stamping unit tests green incl. selector-mutation + matchLabels collision cases
+2. go test ./internal/controllers/core/kubernetesapply/... green
+
+## Evidence-of-record: post-recovery rerun (cold private GOCACHE)
+$ go test ./internal/controllers/core/kubernetesapply/ -count=1 -run TestWorktreeCloneStamping -v
+=== RUN   TestWorktreeCloneStamping
+--- PASS: TestWorktreeCloneStamping (0.04s)
+=== RUN   TestWorktreeCloneStamping_ApplyCmdPath
+--- PASS: TestWorktreeCloneStamping_ApplyCmdPath (0.00s)
+=== RUN   TestWorktreeCloneStamping_MainRunNoop
+--- PASS: TestWorktreeCloneStamping_MainRunNoop (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	1.364s
+
+## Corroborating pre-pressure full-suite run (before shared go-build cache corruption)
+$ go test ./internal/controllers/core/kubernetesapply/... -count=1
+ok  github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply 26.848s
+
+$ go build ./internal/controllers/core/kubernetesapply/  → BUILD_OK (pre-pressure)
+$ go vet ./internal/controllers/core/kubernetesapply/    → clean (pre-pressure)
+
+## Environment notes
+- Mid-run failures with 'could not import ... no such file' / vet.cfg ENOSPC were disk-pressure env failures (shared cache wipes + /var/folders temp refills, diagnosed across validators); never reproduced against the code. Known-flaky internal/engine quartet untouched by this task.
