@@ -1,0 +1,15 @@
+=== RUN   TestWorktreeCloneStamping
+--- PASS: TestWorktreeCloneStamping (0.05s)
+=== RUN   TestWorktreeCloneStamping_ApplyCmdPath
+--- PASS: TestWorktreeCloneStamping_ApplyCmdPath (0.00s)
+=== RUN   TestWorktreeCloneStamping_MainRunNoop
+--- PASS: TestWorktreeCloneStamping_MainRunNoop (0.00s)
+=== RUN   TestWorktreeSiblingDNSRewrite
+=== RUN   TestWorktreeSiblingDNSRewrite/cloned_sibling_rewrites,_shared_stays_bare
+--- PASS: TestWorktreeSiblingDNSRewrite (0.00s)
+=== RUN   TestWorktreeSiblingDNSRewrite_Args
+--- PASS: TestWorktreeSiblingDNSRewrite_Args (0.00s)
+=== RUN   TestWorktreeSiblingDNSRewrite_StableUntouched
+--- PASS: TestWorktreeSiblingDNSRewrite_StableUntouched (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	1.129s

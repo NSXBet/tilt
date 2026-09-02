@@ -1,0 +1,64 @@
+tk-kxk validation — Clone Services + sibling DNS rewrite
+Branch: tk-kxk @ 0979442a8 (fork: worktree sibling DNS rewrite in clone entities)
+Scope: internal/controllers/core/kubernetesapply/worktree_clone.go (+121), worktree_clone_test.go (+277)
+
+== Diff review (git show 0979442a8) ==
+- rewriteSiblingRefs called at end of stampWorktreeClones on the fully stamped
+  set (clone Service names complete before refs resolve). Wired into both
+  call sites via stampWorktreeClones (reconciler.go:438-445 apply-cmd path,
+  :610-615 createEntitiesToDeploy path).
+- clone set derived from Service clones: annotation tilt.dev/worktree ==
+  worktree AND name CutSuffix "-wt-<worktree>" -> bare name. Only clone
+  entities rewritten (annotation gate on every touched entity); stable
+  entities pass untouched (one-way invariant).
+- ExtractPods returns []*v1.PodSpec (reflect pointers INTO the object,
+  internal/k8s/extract.go:12) -> in-place mutation of env values + args on
+  containers and init containers actually persists into applied YAML.
+- rewriteSiblingDNS: "://" short-circuit; leading name split on first . : /;
+  rewrite only on bare, digits-only host:port, and dotted forms; path forms
+  and non-port colons pass through. Conservative by construction.
+
+== go test ./internal/controllers/core/kubernetesapply/ -count=1 ==
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	4.504s
+
+== go test ./internal/k8s/ -count=1 ==
+ok  	github.com/tilt-dev/tilt/internal/k8s	6.244s
+
+== go test ./internal/controllers/core/kubernetesapply/ -count=1 -run TestWorktree -v ==
+--- PASS: TestWorktreeCloneStamping (0.05s)
+--- PASS: TestWorktreeCloneStamping_ApplyCmdPath (0.00s)
+--- PASS: TestWorktreeCloneStamping_MainRunNoop (0.00s)
+--- PASS: TestWorktreeSiblingDNSRewrite (0.00s)
+    --- PASS: TestWorktreeSiblingDNSRewrite/cloned_sibling_rewrites,_shared_stays_bare
+--- PASS: TestWorktreeSiblingDNSRewrite_Args (0.00s)
+--- PASS: TestWorktreeSiblingDNSRewrite_StableUntouched (0.00s)
+PASS
+ok  	github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply	1.129s
+
+== go vet (GOCACHE=$HOME/.cache/go-build-val-kxk) ==
+exit 0, no output (clean)
+
+== gofmt -l internal/controllers/core/kubernetesapply/ internal/k8s/ ==
+exit 0, no output (clean)
+
+Acceptance criteria mapping:
+1. Clone Service with mutated selector -> cluster DNS <svc>-wt-<worktree>
+   reaches only worktree pods: TestWorktreeCloneStamping asserts clone Service
+   sancho-wt-feat-auth carries selector worktree=feat-auth while stable
+   Service selector stays {app: sancho}; clone selector mutation is the
+   deliberate non-match (plan 4.2.1).
+2. Env/arg rewrite in clone entities: sibling refs resolve to clone names
+   (cache -> cache-wt-feat-auth, cache:6379 -> cache-wt-feat-auth:6379,
+   cache.default.svc.cluster.local -> cache-wt-feat-auth.default.svc.cluster.local,
+   args --cache-host cache -> cache-wt-feat-auth); shared sibling refs stay
+   bare (postgres Service has no workload clone in set -> DB_HOST stays
+   postgres, postgres-wt-feat-auth never applied; DB_URL scheme'd form and
+   literals untouched). Tests: TestWorktreeSiblingDNSRewrite,
+   TestWorktreeSiblingDNSRewrite_Args.
+3. Selector uniqueness (no mesh collision): TestWorktreeCloneStamping asserts
+   stable Deployments keep bare selectors without worktree label and no
+   tilt.dev/worktree annotation; sancho-config shared ConfigMap never cloned.
+4. Stable untouched / one-way invariant: TestWorktreeSiblingDNSRewrite_
+   StableUntouched asserts stable api Deployment keeps env value "cache".
+
+No browser surface: pure Go controller change, evidence is test output above.

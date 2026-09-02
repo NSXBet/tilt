@@ -1,0 +1,5 @@
+go vet ./internal/controllers/core/kubernetesapply/ ./internal/k8s/ (GOCACHE=$HOME/.cache/go-build-val-kxk)
+exit: 0, no output
+
+gofmt -l internal/controllers/core/kubernetesapply/ internal/k8s/
+exit: 0, no output (clean)
