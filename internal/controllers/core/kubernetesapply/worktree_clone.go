@@ -1,6 +1,8 @@
 package kubernetesapply
 
 import (
+	"strings"
+
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -223,6 +225,10 @@ func stampWorktreeClones(entities []k8s.K8sEntity, worktree string) []k8s.K8sEnt
 		}
 	}
 
+	// Sibling DNS rewrite (plan §4.2 step 3), on the fully stamped set so
+	// the clone-Service name set is complete before any refs resolve.
+	rewriteSiblingRefs(out, worktree)
+
 	return out
 }
 
@@ -239,4 +245,119 @@ func scrubServerFields(entities []k8s.K8sEntity) {
 		e.Meta().SetGeneration(0)
 		e.Clean()
 	}
+}
+
+// rewriteSiblingRefs applies the sibling DNS rewrite to the clone entities
+// (plan §4.2 step 3): "the worktree clone's env/args get one transparent
+// rewrite: refs to stable siblings stay as-is (shared, same namespace);
+// refs to siblings that ARE worktree-flagged resolve to the clone names."
+//
+// Which siblings are worktree-flagged is derived from the same stamped set:
+// a bare Service name whose clone Service (annotation tilt.dev/worktree) is
+// in the set gets rewritten to the clone name. A Service clone is the only
+// name that actually resolves to the sibling's clone pods, so only
+// Service-backed refs are rewritten; refs to shared siblings — no clone in
+// the set — stay bare and keep resolving through the stable Service. Only
+// clone entities are touched; stable entities pass through untouched
+// (one-way rewrite invariant, plan §12: shared objects never reference
+// clones).
+func rewriteSiblingRefs(entities []k8s.K8sEntity, worktree string) {
+	suffix := worktreeCloneSuffix(worktree)
+
+	// Bare names of the Services cloned in this set — the refs to rewrite.
+	cloned := map[string]bool{}
+	for _, e := range entities {
+		if _, ok := e.Obj.(*v1.Service); !ok {
+			continue
+		}
+		if e.Meta().GetAnnotations()[v1alpha1.AnnotationWorktree] != worktree {
+			continue
+		}
+		if bare, ok := strings.CutSuffix(e.Meta().GetName(), suffix); ok {
+			cloned[bare] = true
+		}
+	}
+	if len(cloned) == 0 {
+		return
+	}
+
+	for _, e := range entities {
+		if e.Meta().GetAnnotations()[v1alpha1.AnnotationWorktree] != worktree {
+			continue
+		}
+		pods, err := k8s.ExtractPods(e.Obj)
+		if err != nil {
+			continue
+		}
+		for _, pod := range pods {
+			for i := range pod.Containers {
+				rewriteContainerRefs(&pod.Containers[i], suffix, cloned)
+			}
+			for i := range pod.InitContainers {
+				rewriteContainerRefs(&pod.InitContainers[i], suffix, cloned)
+			}
+		}
+	}
+}
+
+// rewriteContainerRefs rewrites a clone container's env values and args in
+// place.
+func rewriteContainerRefs(c *v1.Container, suffix string, cloned map[string]bool) {
+	for i := range c.Env {
+		c.Env[i].Value = rewriteSiblingDNS(c.Env[i].Value, suffix, cloned)
+	}
+	for i := range c.Args {
+		c.Args[i] = rewriteSiblingDNS(c.Args[i], suffix, cloned)
+	}
+}
+
+// rewriteSiblingDNS rewrites one reference value: when the value's leading
+// name is a cloned sibling, the clone name replaces it. Forms handled:
+//
+//	cache      -> cache-wt-feat-auth         (bare)
+//	cache:6379 -> cache-wt-feat-auth:6379    (host:port)
+//	cache.db   -> cache-wt-feat-auth.db      (dotted subdomain)
+//
+// Everything else passes through untouched: shared siblings (not in the
+// clone set), scheme'd URLs (postgres://user@postgres/db), path forms, and
+// arbitrary literals. A wrong rewrite breaks the app, so the rewrite only
+// fires on values whose leading name is exactly a cloned sibling.
+func rewriteSiblingDNS(value, suffix string, cloned map[string]bool) string {
+	if strings.Contains(value, "://") {
+		return value
+	}
+	head := value
+	var sep, rest string
+	if i := strings.IndexFunc(value, func(r rune) bool {
+		return r == '.' || r == ':' || r == '/'
+	}); i >= 0 {
+		head, sep, rest = value[:i], string(value[i]), value[i+1:]
+	}
+	if head == "" || !cloned[head] {
+		return value
+	}
+	switch {
+	case sep == "":
+		// The whole value is the bare name.
+		return value + suffix
+	case sep == ":" && isDigits(rest):
+		return head + suffix + sep + rest
+	case sep == ".":
+		return head + suffix + sep + rest
+	default:
+		// Path forms and non-port colon forms: leave alone.
+		return value
+	}
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

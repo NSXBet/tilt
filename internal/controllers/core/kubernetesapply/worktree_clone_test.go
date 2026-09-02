@@ -242,3 +242,280 @@ func TestWorktreeCloneStamping_MainRunNoop(t *testing.T) {
 	assert.Equal(t, "sancho", deployments[0].Name)
 	assert.NotContains(t, f.kClient.Yaml, "wt-")
 }
+
+// Sibling DNS rewrite (plan §4.2 step 3): in clone entities, refs to
+// siblings that are cloned in the same stamped set resolve to the clone
+// names; refs to shared siblings stay bare.
+func TestWorktreeSiblingDNSRewrite(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		yaml     string
+		expected map[string]string // env value -> expected, on the api clone
+	}{
+		{
+			name: "cloned sibling rewrites, shared stays bare",
+			yaml: `
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+spec:
+  selector:
+    app: cache
+  ports:
+  - port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      containers:
+      - name: cache
+        image: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: api
+        env:
+        - name: CACHE_HOST
+          value: cache
+        - name: CACHE_ADDR
+          value: cache:6379
+        - name: CACHE_DOMAIN
+          value: cache.default.svc.cluster.local
+        - name: DB_HOST
+          value: postgres
+        - name: DB_URL
+          value: postgres://user@postgres/db
+        - name: NOT_A_HOST
+          value: some literal
+`,
+			expected: map[string]string{
+				"CACHE_HOST":   "cache-wt-feat-auth",
+				"CACHE_ADDR":   "cache-wt-feat-auth:6379",
+				"CACHE_DOMAIN": "cache-wt-feat-auth.default.svc.cluster.local",
+				"DB_HOST":      "postgres",
+				"DB_URL":       "postgres://user@postgres/db",
+				"NOT_A_HOST":   "some literal",
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			ka := v1alpha1.KubernetesApply{
+				ObjectMeta: metav1.ObjectMeta{Name: "a"},
+				Spec: v1alpha1.KubernetesApplySpec{
+					YAML:     tt.yaml,
+					Worktree: "feat-auth",
+				},
+			}
+			f.Create(&ka)
+			f.MustReconcile(types.NamespacedName{Name: "a"})
+
+			clones := deployEntities(t, f.kClient.Yaml)
+			var apiClone *appsv1.Deployment
+			for _, d := range clones {
+				if d.Name == "api-wt-feat-auth" {
+					apiClone = d
+				}
+			}
+			require.NotNil(t, apiClone, "api clone must be applied")
+
+			env := map[string]string{}
+			for _, ev := range apiClone.Spec.Template.Spec.Containers[0].Env {
+				env[ev.Name] = ev.Value
+			}
+			for name, want := range tt.expected {
+				assert.Equalf(t, want, env[name], "env %s", name)
+			}
+
+			// postgres has a Service but no workload in this set, so it is
+			// NOT cloned: no clone Service, and the DB_HOST ref stays bare.
+			assert.Contains(t, f.kClient.Yaml, "name: cache-wt-feat-auth")
+			assert.NotContains(t, f.kClient.Yaml, "name: postgres-wt-feat-auth")
+		})
+	}
+}
+
+// Args rewrite: a clone's args referencing a cloned sibling resolve to the
+// clone name; the stable sibling passes through untouched.
+func TestWorktreeSiblingDNSRewrite_Args(t *testing.T) {
+	yaml := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+spec:
+  selector:
+    app: cache
+  ports:
+  - port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      containers:
+      - name: cache
+        image: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: api
+        args: ["--cache-host", "cache", "--db-host", "postgres"]
+`
+	f := newFixture(t)
+	ka := v1alpha1.KubernetesApply{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec: v1alpha1.KubernetesApplySpec{
+			YAML:     yaml,
+			Worktree: "feat-auth",
+		},
+	}
+	f.Create(&ka)
+	f.MustReconcile(types.NamespacedName{Name: "a"})
+
+	var apiClone *appsv1.Deployment
+	for _, d := range deployEntities(t, f.kClient.Yaml) {
+		if d.Name == "api-wt-feat-auth" {
+			apiClone = d
+		}
+	}
+	require.NotNil(t, apiClone)
+	assert.Equal(t,
+		[]string{"--cache-host", "cache-wt-feat-auth", "--db-host", "postgres"},
+		apiClone.Spec.Template.Spec.Containers[0].Args)
+}
+
+// Stable entities never reference clone names: the rewrite must not touch
+// the stable Deployment's env (one-way invariant, plan §12).
+func TestWorktreeSiblingDNSRewrite_StableUntouched(t *testing.T) {
+	yaml := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+spec:
+  selector:
+    app: cache
+  ports:
+  - port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      containers:
+      - name: cache
+        image: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: api
+        env:
+        - name: CACHE_HOST
+          value: cache
+`
+	f := newFixture(t)
+	ka := v1alpha1.KubernetesApply{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec: v1alpha1.KubernetesApplySpec{
+			YAML:     yaml,
+			Worktree: "feat-auth",
+		},
+	}
+	f.Create(&ka)
+	f.MustReconcile(types.NamespacedName{Name: "a"})
+
+	for _, d := range deployEntities(t, f.kClient.Yaml) {
+		if d.Name != "api" {
+			continue
+		}
+		env := d.Spec.Template.Spec.Containers[0].Env
+		require.Len(t, env, 1)
+		assert.Equal(t, "cache", env[0].Value,
+			"stable entity must keep the bare sibling ref")
+	}
+}
