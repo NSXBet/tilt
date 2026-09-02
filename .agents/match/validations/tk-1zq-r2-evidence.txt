@@ -1,0 +1,53 @@
+tk-1zq validation round 2 — Validator1zqR2 — 2026-09-02 — commit 17eadd716 (vs base f9f743949 = current master)
+
+REWORK VERDICT: both round-1 breaks fixed with permanent acceptance tests.
+The master..HEAD diff is exactly the task change (3 code files + evidence file).
+
+HUNK-BY-HUNK (boundary.go, rework commit 17eadd716)
+- Break A fix: renameDerived gains `isClone := IsCloneName(m.Name)`; new
+  clone-gated block calls scopeDeployTargetImageMaps(m.DeployTarget, cloneName):
+  K8sTarget -> scopeImageMapNames(t.ImageMaps) + WithImageDependencies + Name
+  re-stamped to clone name; DockerComposeTarget -> same for t.Spec.ImageMaps via
+  WithImageMapDeps; default (LocalTarget etc.) passes through. Name re-stamp is
+  load-bearing (loader stamps target names from BARE manifest name; buildcontrol
+  resolves kTargetNN/dcTargetNN via DeployTarget.ID() against clone-named CRs).
+- Break B fix: ImageMapDeps scoping block changed from `len(deps) > 0` to
+  `isClone && len(deps) > 0` — shared (bare-named) redefinitions keep bare
+  identity and bare deps; no more '"postgres" is not a worktree clone name'.
+- Consistency: selector block now uses the same `isClone` var (no behavior
+  change); comment updates only elsewhere. No unrelated code touched.
+
+TEST RUNS (GOCACHE=$HOME/.cache/go-build-val-1zq2, all -count=1)
+Round-1 repro/acceptance tests, verbose — ALL PASS:
+  --- PASS: TestApplyBoundary_CloneK8sDeployImageMapsScoped   (Break A k8s path: scoped ImageMaps list + InferLiveUpdateSelectors OK)
+  --- PASS: TestApplyBoundary_CloneDCDeployImageMapsScoped    (Break A DC path: Spec.ImageMaps scoped + InferLiveUpdateSelectors OK)
+  --- PASS: TestApplyBoundary_SharedRedefinitionDepsStaysBare (Break B: shared multi-stage redefinition keeps bare deps, no error)
+  --- PASS: TestIntegration_TwoWorktreesSameDockerfileDistinctIdentity
+      (task integration criterion: two worktrees, same Dockerfile — distinct
+       ImageMap names/selectors, distinct build tags via Refs->AddTagSuffix,
+       shared postgres bare + untouched, clone deploy targets on own scoped
+       ImageMaps, full ApplyBoundary->InferLiveUpdateSelectors sequence green)
+Required packages — ALL ok:
+  ok  github.com/tilt-dev/tilt/internal/tiltfile/worktree              (72 pass, 0 fail, -v)
+  ok  github.com/tilt-dev/tilt/pkg/model
+  ok  github.com/tilt-dev/tilt/internal/controllers/core/tiltfile
+  ok  github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply
+Known-baseline (ignored per brief): ./internal/tiltfile = exactly
+  TestKustomizeFlags + TestKustomizeBin (no kustomize binary on PATH; fail
+  identical on master). go vet ./internal/tiltfile/worktree clean; go build ./... clean.
+Worktree clean (no unstaged code changes); evidence file + round-2 commit only.
+
+CRITERION -> EVIDENCE MAP
+1. Clone deploy targets carry scoped ImageMaps (Break A) ->
+   TestApplyBoundary_CloneK8sDeployImageMapsScoped +
+   TestApplyBoundary_CloneDCDeployImageMapsScoped (both run ApplyBoundary ->
+   InferLiveUpdateSelectors, the exact production sequence that broke).
+2. Deps rewrite gated on IsCloneName (Break B) ->
+   TestApplyBoundary_SharedRedefinitionDepsStaysBare (previously: hard error).
+3. Per-worktree identity + integration criterion ->
+   TestIntegration_TwoWorktreesSameDockerfileDistinctIdentity + 72/72 in
+   ./internal/tiltfile/worktree.
+4. No regressions in identity plumbing -> pkg/model, core/tiltfile,
+   core/kubernetesapply all ok.
+
+VERDICT: APPROVED.
