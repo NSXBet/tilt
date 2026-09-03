@@ -1,0 +1,54 @@
+tk-jxc merge — post-merge validation (2026-09-02, master @ 1fb733e5f)
+
+MERGED
+- bc716057a merge: tk-jxc — Tiltfile reconciler multi-tiltfile rewrite
+  (branch tk-jxc-rework: 4eeae315e WIP, fa56aa501 hermetic git fixtures,
+   e4eb03ebd park/replay lifecycle, 6b3d190af r3 validation evidence,
+   0bd9638ce identity + nil-main contract fixes)
+- 1fb733e5f fixup: TUI worktree grouping — underscore clone-name format
+  (tk-usj dbd81913a predated tk-ntx's '_' cutover reaching master; its
+   group-header child names + test fixtures used the abandoned '/')
+
+POST-MERGE FIX COMMIT (0bd9638ce, on branch before merge)
+1. ApplyBoundary stamps KubernetesApplySpec.Worktree on clone K8s targets
+   (internal/tiltfile/worktree/boundary.go). Chain verified: the spec rides
+   the manifest into toKubernetesApplyObjects (tiltfile/api.go:414) →
+   persisted KA CR → kubernetesapply/reconciler.go:456,627 keys
+   stampWorktreeClones on spec.Worktree. Before the fix the persisted KA
+   carried Worktree="" whenever the loader didn't stamp (fake loader, parked-
+   TLR replay) — apply-time clone stamping never fired for those runs.
+2. Combine dep validation skipped when main == nil
+   (internal/tiltfile/worktree/validate.go). The hold/replay lifecycle kicks
+   worktree runs conservatively against a failed/absent main result; the old
+   contract (nil main still validates deps) deadlocked the replay: Combine
+   errored → dispatch carried nil manifests →
+   TestWorktreeRun_AfterFailedMain panicked on Manifests[0].
+3. SplitName parses '_' join (display.go); tests updated from '/'.
+
+TESTS (master, post-merge)
+- internal/controllers/core/tiltfile/ ok
+- internal/tiltfile/worktree/ ok (46 subtests)
+- internal/controllers/core/kubernetesapply/ ok (clone-stamping consumer)
+- internal/hud/ ok (after fixup)
+- internal/engine/... ok (analytics/buildcontrol/configs/dockerprune/
+  k8srollout/k8swatch/local/telemetry/uiresource/uisession)
+- go build ./... ok; go vet ./internal/... clean; gofmt clean on touched files
+
+KNOWN BASELINE FLAKES (NOT from this merge; pre-existing, machine-load)
+- internal/engine timing tests fail intermittently under parallel load,
+  pass in isolation and on sequential re-runs (stdTimeout = 5s,
+  upper_test.go:123): observed rotating across TestDontStartBuild...,
+  TestOverrideTriggerModeEvent, TestMultipleChangesOnlyDeployOneManifest,
+  TestDisableButtonIsCreated, TestWatchManifestsWithCommonAncestor,
+  TestPodEventContainerStatusWithoutImage. Reproduced on the pre-merge
+  baseline with changes stashed (different tests each run) → load flake.
+  No fork commits touch internal/engine/.
+
+CONTRACT CHANGE ON RECORD (arbitrated by .agents/match/validations/
+tk-jxc-r3-evidence.txt + TestWorktreeRun_AfterFailedMain)
+- nil-main (failed/absent main) worktree run: prefix, deps untouched,
+  NO dep error at Combine; dispatch proceeds; engine reports unknown deps.
+  Master's pre-merge tests TestCombine_NilMainStillValidates /
+  TestApplyBoundary_NilMainErrorsOnUnresolvedDep /
+  TestReconciler_WorktreeBoundaryNoMainResult pinned the old contract and
+  were updated (renamed *Conservative / dispatch assertion).
