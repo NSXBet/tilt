@@ -1707,8 +1707,9 @@ func (s *tiltfileState) sanitizeDependencies(ms []model.Manifest) error {
 			}
 			if _, ok := knownResources[b]; !ok {
 				if keepUnknown {
+					// The boundary pass resolves this dep to a main-defined
+					// resource or rejects it with a load error; keep it.
 					sanitizedDeps = append(sanitizedDeps, b)
-					fmt.Printf("DBG sanitize keep unknown dep %s -> %s (worktree=%q)\n", m.Name, b, s.worktree)
 					continue
 				}
 				logger.Get(s.ctx).Warnf("resource %s specified a dependency on unknown resource %s - dependency ignored", m.Name, b)
