@@ -93,3 +93,70 @@ Known-baseline exclusions (no docker daemon, no kustomize binary) are moot —
 nothing compiles far enough to reach them. Evidence of failure state:
 go build/vet/test outputs above; merge introduced the break (git show
 2dd4ff533^1 vs ee69ab21d comparison on file). REJECTED: route rework.
+
+================================================================================
+ADDENDUM — POST-MERGE VALIDATION ROUND 2 (2026-09-03, validator PM2)
+================================================================================
+STATUS AT VALIDATION TIME
+-------------------------
+The r1 verdict above stands and was acted on: merge 2dd4ff533 was REVERTED on
+master (c3f2443bd, parent 5ffa54343), master then advanced through the tk-jxc
+merges. Current master HEAD: 780ae6ba2 (chore: post-merge validation evidence
+for tk-jxc). 2dd4ff533 is no longer HEAD and never will be re-validated as
+such; the broken merge resolution died in the revert.
+
+The integration rework was redone on branch tk-7m3-rework:
+  873665355 fork: ingress clones on master's clones-only seam (tk-7m3 rework)
+  f1ccad45b fork: validation evidence for tk-7m3 (rework r2)
+and was APPROVED r2 by the task validator (evidence: tk-7m3-r2-summary.md,
+present in the worktree; not yet on master — the branch is unmerged).
+Diff review of 2dd4ff533..tk-7m3-rework (worktree_clone.go only): builds
+`stamped` (stable + clones), runs cloneIngresses over the FULL stamped set
+keyed on clonedServiceNames(stamped) (r1's incomplete-name-set root cause
+addressed), appends new ingress clones back into `clones`, then runs
+rewriteSiblingRefs over the full set. WorktreeClones clones-only contract
+preserved (tilt down / GC unaffected). Known nit: duplicated comment
+paragraph ~lines 248-258, cosmetic, non-blocking.
+
+CHECKS ON MASTER @ 780ae6ba2 (GOCACHE=~/.cache/go-build-val-pm2)
+----------------------------------------------------------------
+1) git log --oneline -1 -> 780ae6ba2 (NOT 2dd4ff533: repo moved past it —
+   revert + tk-jxc merges; see STATUS above).
+2) go test ./internal/controllers/core/kubernetesapply/ -count=1
+   -> ok  github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply  2.545s
+3) go test ... -count=1 -run 'TestWorktree' -v -> 9/9 PASS
+   (CloneStamping, CloneStamping_ApplyCmdPath, CloneStamping_MainRunNoop,
+   SiblingDNSRewrite, SiblingDNSRewrite_Args, SiblingDNSRewrite_StableUntouched,
+   GCClonesOrphanedClones, GCKeepsLiveAndForeignClones, GC_NoWorktreesNoop).
+   No ingress-clone tests here BY DESIGN: the revert (c3f2443bd) removed the
+   broken merge's Ingress code + tests from master; current master contains
+   no Ingress-clone code (grep: zero cloneIngress/cloneIngresses/gateway-api
+   hits in worktree_clone.go / go.mod).
+4) go build ./... -> exit 0 (BUILD OK).
+
+REPRODUCING THE APPROVED BRANCH VERDICT @ f1ccad45b (read-only, in worktree)
+----------------------------------------------------------------------------
+- go test ./internal/controllers/core/kubernetesapply/ -count=1
+  -> ok  ... 1.543s
+- go test ... -count=1 -run 'TestWorktree' -v -> 10/10 PASS, including
+  TestWorktreeIngressClone (route clone + tilt.dev/worktree annotation +
+  backend rewrite + shared-backend not cloned).
+- go build ./... -> exit 0.
+- go test ./internal/cli/ -count=1 -run 'Down|Worktree' -> ok 2.066s.
+Worktree had no code modifications (only .tasks bookkeeping).
+
+KNOWN-BASELINE CHECKS
+---------------------
+No docker daemon / no kustomize binary: no TestDockerBuild* or
+TestKustomizeFlags/Bin runs were reached or skipped in the executed sets —
+not exercised, no classification needed this round.
+
+VERDICT (round 2)
+-----------------
+PASSED — master's merged state (780ae6ba2) is green: full kubernetesapply
+suite, all worktree tests, and go build all pass; the r1 compile break is
+gone (reverted). The approved rework branch (f1ccad45b) reproduces green:
+10/10 worktree tests including the ingress-clone contract, full package and
+cli Down|Worktree pass. No integration regression vs the branch-only run.
+Feature lands on master when the Coach merges tk-7m3-rework (fast-forward
+over 2dd4ff533..f1ccad45b lineage).
