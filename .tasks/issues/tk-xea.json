@@ -4,32 +4,41 @@
   "id": "tk-xea",
   "title": "Phase 2: Interception — apply clone-stamping + build tag rewrite",
   "description": "",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "issue_type": "feature",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:26:38.066Z",
-  "updated_at": "2026-08-30T11:25:57.003Z",
+  "updated_at": "2026-09-02T20:23:45.971Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-02T20:23:45.971Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
   "labels": [
     "worktrees"
   ],
-  "notes": null,
+  "notes": "all constituent tasks merged + validated",
   "design": null,
   "acceptance_criteria": null,
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-523804ad-9880-45f9-99eb-a478218111e2",
+      "issue_id": "tk-xea",
+      "author": "yuri",
+      "text": "COACH: all phase-2 constituent tasks closed and merged to master (tk-mzx, tk-jxb, tk-7gg, tk-1zq round-2). Closing rollup.",
+      "created_at": "2026-09-02T20:23:45.480Z"
+    }
+  ],
+  "comment_count": 1
 }

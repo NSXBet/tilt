@@ -4,16 +4,16 @@
   "id": "tk-y5l",
   "title": "Phase 4: UI — web grouping, TUI grouping, lifecycle, docs, e2e",
   "description": "",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "issue_type": "feature",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:26:38.703Z",
-  "updated_at": "2026-08-30T11:26:04.083Z",
+  "updated_at": "2026-09-03T17:36:28.659Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-03T17:36:28.540Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
@@ -26,10 +26,26 @@
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-32134773-bdbb-49b1-829d-322f10700382",
+      "issue_id": "tk-y5l",
+      "author": "yuri",
+      "text": "COACH: phase-4 constituents tk-a6u (web) and tk-usj (TUI) merged + validated; lifecycle pieces landed via tk-hd5. Remaining under this rollup: tk-8fk (e2e fixture + docs, worker now running). Keeping open until tk-8fk closes.",
+      "created_at": "2026-09-02T20:24:01.248Z"
+    },
+    {
+      "id": "comment-618a7121-c897-4dc0-82a7-0102e6dd024a",
+      "issue_id": "tk-y5l",
+      "author": "yuri",
+      "text": "all constituents merged and validated: tk-a6u (web grouping), tk-usj (TUI grouping), tk-hd5 (lifecycle/down+GC), tk-8fk (e2e fixtures + docs/worktrees.md). Rollup complete.",
+      "created_at": "2026-09-03T17:36:28.659Z"
+    }
+  ],
+  "comment_count": 2
 }

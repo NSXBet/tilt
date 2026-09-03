@@ -4,23 +4,23 @@
   "id": "tk-kxk",
   "title": "Clone Services + sibling DNS rewrite|For each Service selecting a stamped workload: clone Service with same name suffix + mutated selector -> cluster DNS <svc>-wt-<name> reaches only worktree pods. Env/arg rewrite in clone entities: sibling refs resolve to clone names for worktree-flagged resources, stay bare for shared. No mesh required. Tests: selector uniqueness, env rewrite.",
   "description": "",
-  "status": "approved",
+  "status": "closed",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:59.001Z",
-  "updated_at": "2026-09-02T16:09:11.993Z",
+  "updated_at": "2026-09-02T20:34:11.909Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-02T20:34:11.909Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
   "labels": [
     "worktrees"
   ],
-  "notes": null,
+  "notes": "merged to master (5ab22a073) + validator approved post-merge",
   "design": null,
   "acceptance_criteria": null,
   "estimated_minutes": null,
@@ -47,7 +47,14 @@
       "author": "yuri",
       "text": "APPROVED: (1) Clone Service w/ mutated selector — TestWorktreeCloneStamping asserts sancho-wt-feat-auth Service selector worktree=feat-auth, stable Service selector stays {app: sancho}, 4 Deployments (stable+clone x2) applied; cluster DNS <svc>-wt-<worktree> reaches only worktree pods by construction. (2) Env/arg rewrite in clone entities — TestWorktreeSiblingDNSRewrite: cache->cache-wt-feat-auth, cache:6379->cache-wt-feat-auth:6379, cache.default.svc.cluster.local->cache-wt-feat-auth.default.svc.cluster.local; shared sibling stays bare (postgres has no workload clone -> DB_HOST=postgres, no postgres-wt-feat-auth applied); scheme'd URL (postgres://user@postgres/db) and literals untouched. TestWorktreeSiblingDNSRewrite_Args: --cache-host cache -> cache-wt-feat-auth, --db-host postgres stays. (3) Selector uniqueness — stable Deployments keep bare selectors, no worktree label/annotation; shared sancho-config never cloned. (4) One-way invariant — TestWorktreeSiblingDNSRewrite_StableUntouched: stable api keeps env value 'cache'. Impl review: rewriteSiblingRefs at end of stampWorktreeClones (complete clone set), annotation+CutSuffix gate on Service clones, ExtractPods returns in-object pointers so in-place env/arg mutation persists; wired into both apply paths (reconciler.go:438/610). Evidence: go test ./internal/controllers/core/kubernetesapply/ -count=1 -> ok 4.504s (6 worktree tests incl. 3 new rewrite tests, all PASS in -run TestWorktree -v); go test ./internal/k8s/ -count=1 -> ok 6.244s; go vet + gofmt clean. Screenshots N/A (pure Go controller change, no browser surface). Files: .worktrees/tk-kxk/.agents/match/validations/tk-kxk-{evidence.txt,kubernetesapply-tests.txt,k8s-tests.txt,worktree-tests-verbose.txt,vet-gofmt.txt}, committed f9e0ac0e2.",
       "created_at": "2026-09-02T16:09:03.901Z"
+    },
+    {
+      "id": "comment-27debfd7-4eb0-4a30-ba67-285cebd5871d",
+      "issue_id": "tk-kxk",
+      "author": "yuri",
+      "text": "COACH: discovered work already merged to master at 5ab22a073 (13:12, contains 0979442a8 + evidence f9e0ac0e2). Validator approval at 16:09 validated those exact merged commits — post-merge validation satisfied. Closing; removing worktree + branch.",
+      "created_at": "2026-09-02T20:34:09.307Z"
     }
   ],
-  "comment_count": 1
+  "comment_count": 2
 }

@@ -4,14 +4,14 @@
   "id": "tk-7m3",
   "title": "Ingress/route clones for gateway routing|When stack defines Ingress/HTTPRoute for flagged workload: clone with same suffix stamp; gateway (phase 3) maps <wt>.tilt.localhost -> clone route. Optional plain Ingress objects, no mesh. Test: route clone carries worktree annotation.",
   "description": "",
-  "status": "ready-to-review",
+  "status": "closed",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:59.107Z",
-  "updated_at": "2026-09-02T19:34:45.086Z",
+  "updated_at": "2026-09-03T01:37:36.676Z",
   "started_at": null,
   "closed_at": null,
   "due_at": null,
@@ -47,7 +47,42 @@
       "author": "yuri",
       "text": "DONE: Herdr worker commit ee69ab21d; focused smoke test passed. Awaiting review.",
       "created_at": "2026-09-02T19:34:44.958Z"
+    },
+    {
+      "id": "comment-58570932-4c43-47e2-8b43-f24c098bcfa4",
+      "issue_id": "tk-7m3",
+      "author": "yuri",
+      "text": "COACH: validator verdict APPROVED recorded — clone contract matches master's cloneService pattern, HTTPRoute out-of-scope verified (no gateway-api module vendored; unstructured fallback path). Hunk review queued; batching with tk-zkx + tk-jxc rounds into one review surface.",
+      "created_at": "2026-09-02T20:39:33.895Z"
+    },
+    {
+      "id": "comment-afbf50e0-a55f-498a-8a9a-ec68c43efff4",
+      "issue_id": "tk-7m3",
+      "author": "yuri",
+      "text": "COACH: USER APPROVED (hunk review, no unresolved comments). Merging after tk-zkx + post-merge validation.",
+      "created_at": "2026-09-02T21:44:10.546Z"
+    },
+    {
+      "id": "comment-c46784dc-7338-438f-aa98-f87a037d0de8",
+      "issue_id": "tk-7m3",
+      "author": "yuri",
+      "text": "COACH: USER-APPROVED merge 2dd4ff533 FAILED post-merge validation — merge resolution bug: ingress block referenced branch-side accumulator 'out' while merged master's WorktreeClones accumulates in 'clones' (branch tip compiled because 'out' existed there). Master reverted at c3f2443bd; PM2 evidence 5ffa54343 (root cause + mechanical fix order). Task re-opened for integration rework: rebase ee69ab21d work onto current master adapting to the 'clones' seam, then ready-to-review again.",
+      "created_at": "2026-09-02T22:06:05.658Z"
+    },
+    {
+      "id": "comment-48d745ee-0028-47b2-b75b-d8fc3c2d8c65",
+      "issue_id": "tk-7m3",
+      "author": "yuri",
+      "text": "COACH: rework validated — validator (PM2) PASSED r2: rework f1ccad45b green in-worktree (TestWorktree 10/10 incl. TestWorktreeIngressClone, kubernetesapply, cli Down|Worktree), r1 root cause verified fixed (cloneIngresses over full stamped set, keyed on clonedServiceNames(stamped); ingress clones appended into the clones accumulator so tilt down sees them). Merge proceeding (3-way, branch carries the revert).",
+      "created_at": "2026-09-03T01:35:04.223Z"
+    },
+    {
+      "id": "comment-9daa754d-806e-4e52-aa45-9c168d2ed6d0",
+      "issue_id": "tk-7m3",
+      "author": "yuri",
+      "text": "COACH: MERGED fffd87ac4 (r2 rework, --no-ff over revert lineage) + post-merge validation b7af267ee: master go build ./... OK, TestWorktree incl. TestWorktreeIngressClone PASS, cli Down|Worktree PASS. Closing.",
+      "created_at": "2026-09-03T01:37:36.676Z"
     }
   ],
-  "comment_count": 1
+  "comment_count": 6
 }

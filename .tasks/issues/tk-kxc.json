@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-kxc",
+  "title": "Serve-port seam for local_resource: model.LocalTarget port field + portregistry wiring",
+  "description": "Follow-up from tk-zkx validation: per-worktree local_resource serve ports cannot be deconflicted through the port registry because model.LocalTarget (pkg/model/local_target.go) carries no port field and serve ports never reach internal/portregistry (its only consumers: internal/tiltfile/docker_compose.go:651 DC port_specs, internal/controllers/core/portforward/reconciler.go:216 k8s PortForward CRs). Deliverable: add serve-port field to LocalTarget (or CmdServerSpec seam), wire worktree-flagged local_resources' serve ports through portregistry.Allocate keyed per worktree, tests: two worktrees with same serve port get distinct registry allocations; main unchanged. Parent epic tk-ygh, label worktrees. See .agents/match/validations/tk-zkx-evidence.txt for the verified gap analysis.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-02T21:44:48.572Z",
+  "updated_at": "2026-09-03T17:34:24.506Z",
+  "started_at": null,
+  "closed_at": "2026-09-03T17:34:24.399Z",
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-ygh",
+  "labels": [],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-01f000c3-93fb-4eef-a229-2d24388fd1fc",
+      "issue_id": "tk-kxc",
+      "author": "yuri",
+      "text": "COACH: worker session died mid-run (subagent shutdown, no DONE, no code written — worktree clean at 6c9d1d48c). Its transcript shows it located the right seams (LocalTarget.ServeCmd, engine/local/servercontroller.go CmdServerSpec, internal/tiltfile/docker_compose.go:651 wtPortOwner precedent, internal/tiltfile/tiltfile_docker_compose_test.go wtSetupWorktreeCheckout test helper pattern, wtPortRangeFor). Respawning fresh worker; first merge master into tk-kxc.",
+      "created_at": "2026-09-03T01:58:06.241Z"
+    },
+    {
+      "id": "comment-505925ca-d725-4a22-bfba-a132f4600572",
+      "issue_id": "tk-kxc",
+      "author": "yuri",
+      "text": "DONE: serve-port seam for local_resource (merged master b7af267ee into tk-kxc first — clean fast-forward). Changes: (1) model.LocalTarget gains ServePort field + WithServePort/WithServeCmdEnv helpers (pkg/model/local_target.go). (2) local_resource accepts serve_port= int kwarg, validated: error when serve_cmd empty (internal/tiltfile/local_resource.go). (3) translateLocal: worktree runs allocate via portregistry.Allocate(owner='lr:<worktree>/<resource>', requested) — sticky across reloads, distinct per worktree, honors port_range with OS-fallback — and inject TILT_SERVE_PORT=<port> into ServeCmd.Env so the process binds the deconflicted port; main runs keep authored port untouched (internal/tiltfile/tiltfile_state.go). Verified: go test ./pkg/model ./internal/engine/local ./internal/controllers/core/cmd ./internal/portregistry ./internal/store ./internal/hud/webview ./internal/controllers/core/portforward — all pass; ./internal/tiltfile passes except pre-existing baseline failures TestKustomizeFlags/TestKustomizeBin (kustomize binary absent from PATH, fail identically on clean master); all 41 local_resource/worktree/DC-port/worktree_config tests green incl. new TestLocalResource_WorktreeServePortDeconflict, TestLocalResource_TwoWorktreesNoServePortClash (+reload stability), TestLocalResource_WorktreeNoServePortUnchanged, TestLocalResourceServePortWithoutServeCmd, TestServePortEnvAndRestart. Commit 38ccb7643.",
+      "created_at": "2026-09-03T04:20:27.138Z"
+    },
+    {
+      "id": "comment-5ed58a9a-f701-477d-b5e4-6a71e28955e1",
+      "issue_id": "tk-kxc",
+      "author": "yuri",
+      "text": "APPROVED: serve-port seam (commit 38ccb7643 on tk-kxc, merged master b7af267ee).\n\nCriterion -> evidence (full mapping: .agents/match/validations/tk-kxc-evidence.txt, committed 233cafee7):\n1. LocalTarget.ServePort + helpers -> diff reviewed hunk-by-hunk; build/vet/gofmt clean.\n2. serve_port= kwarg + serve_cmd validation -> TestLocalResourceServePortWithoutServeCmd PASS; test() shares the unpack path.\n3. Worktree allocation via portregistry 'lr:<wt>/<res>' + port_range + OS fallback; main keeps authored port -> translateLocal hunks verified; TestLocalResource_WorktreeServePortDeconflict (3 subtests), TestLocalResource_TwoWorktreesNoServePortClash (+reload sticky), TestLocalResource_WorktreeServePortRequestedFree, TestLocalResource_WorktreeNoServePortUnchanged — ALL PASS; port_range wired at tiltfile.go:259 SetPortRange.\n4. Engine consumption: CmdServerSpec.Env = ServeCmd.Env; env is part of cmdSpec equality -> port change recreates serve Cmd. TestServePortEnvAndRestart PASS.\n5. TILT_SERVE_PORT injection only when port rewritten (main runs + free-requested skips) — matches code comments and tests.\n6. LIVE BINARY E2E (main surface): tilt built from tk-kxc; tilt up on fixture (serve_port=8080): resource ok/ok, serve PID inspected via ps eww — NO TILT_SERVE_PORT (main contract); tilt alpha tiltfile-result JSON: ServePort=8080, ServeCmd.Env=null; HUD screenshots: validations/tk-kxc-hud-main.png, tk-kxc-hud-web-resource.png (web: Local, Runtime Ready).\n7. Worktree live run unreachable via CLI (upper.worktreesEnabled dark flag never set true — plan §10; no code change allowed in validation). Worktree path instead proven through the 5 loader tests driving the REAL production loader + 4 worktree reconciler tests + TestCreateTiltfile_Worktrees, all PASS; -race clean on the two registry-sensitive tests.\nBaseline: TestKustomizeFlags/Bin fail identically on clean master (kustomize binary absent) — environmental, not this change.\nPackages green: internal/tiltfile (except baseline), controllers/core/cmd, controllers/core/tiltfile, engine/configs, portregistry, pkg/model, store/..., hud/webview, engine/buildcontrol. Full go build ./... green.",
+      "created_at": "2026-09-03T05:17:29.733Z"
+    },
+    {
+      "id": "comment-6c62980a-be26-4e49-b11e-5eca14230d9d",
+      "issue_id": "tk-kxc",
+      "author": "yuri",
+      "text": "COACH: validator APPROVED (evidence 233cafee7). Hunk review session opened for user: worktree tk-kxc, diff vs master (single commit 38ccb7643: LocalTarget.ServePort + local_resource serve_port kwarg + portregistry worktree allocation + TILT_SERVE_PORT env injection). Waiting for user review before merging.",
+      "created_at": "2026-09-03T05:21:00.276Z"
+    },
+    {
+      "id": "comment-4bdbac12-5832-484d-ad38-0622a2be8165",
+      "issue_id": "tk-kxc",
+      "author": "yuri",
+      "text": "merged to master as af8da7534 (match day, hunk review approved; post-merge green: build OK, TestLocalResource ok)",
+      "created_at": "2026-09-03T17:34:24.506Z"
+    }
+  ],
+  "comment_count": 5
+}

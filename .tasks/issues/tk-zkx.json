@@ -4,16 +4,16 @@
   "id": "tk-zkx",
   "title": "local_resource(worktree=) instance + cwd|Per-worktree instance: runs in worktree cwd, serve ports from registry, name engine-prefixed. Main-defined local_resources (admin-bff-image sha-pinned pull pattern) inherited by worktree deps without re-running. Test: worktree local_resource serve + port registry allocation.",
   "description": "",
-  "status": "ready-to-review",
+  "status": "closed",
   "priority": 2,
   "issue_type": "task",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:27:59.528Z",
-  "updated_at": "2026-09-02T19:34:45.855Z",
+  "updated_at": "2026-09-03T00:17:06.882Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-03T00:17:06.882Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
@@ -47,7 +47,35 @@
       "author": "yuri",
       "text": "DONE: Herdr worker commit f683341a7; focused smoke test passed. Awaiting review.",
       "created_at": "2026-09-02T19:34:45.738Z"
+    },
+    {
+      "id": "comment-bc2ea738-b2ab-4170-b69b-796d27f5b833",
+      "issue_id": "tk-zkx",
+      "author": "yuri",
+      "text": "COACH: validator verdict APPROVED recorded (partial completion — worktree cwd + engine-prefixed identity + inheritance covered by tests; serve-port registry allocation blocked on missing LocalTarget port seam, verified in source). Hunk review queued; will batch with the in-flight tk-7m3/tk-jxc rounds to keep one review surface. Follow-up proposal (needs your call): new tk for LocalTarget serve-port field + portregistry wiring.",
+      "created_at": "2026-09-02T20:39:28.802Z"
+    },
+    {
+      "id": "comment-6a139aed-0dfc-4b2c-81dd-87a3467593f4",
+      "issue_id": "tk-zkx",
+      "author": "yuri",
+      "text": "COACH: USER APPROVED (hunk review, no unresolved comments). Merging.",
+      "created_at": "2026-09-02T21:44:10.220Z"
+    },
+    {
+      "id": "comment-46bc035b-1e7a-445a-befe-4de9857518db",
+      "issue_id": "tk-zkx",
+      "author": "yuri",
+      "text": "COACH: checking merge state before close",
+      "created_at": "2026-09-03T00:16:18.018Z"
+    },
+    {
+      "id": "comment-b2769734-b5a7-4272-a090-b83cedbed0df",
+      "issue_id": "tk-zkx",
+      "author": "yuri",
+      "text": "COACH: merged to master (6c9d1d48c) with post-merge validation. Closing.",
+      "created_at": "2026-09-03T00:17:06.572Z"
     }
   ],
-  "comment_count": 1
+  "comment_count": 5
 }

@@ -4,32 +4,41 @@
   "id": "tk-yb6",
   "title": "Phase 3: Ports registry + gateway host-router",
   "description": "",
-  "status": "open",
+  "status": "closed",
   "priority": 1,
   "issue_type": "feature",
   "owner": null,
   "assignee": null,
   "created_by": "yuri",
   "created_at": "2026-08-29T22:26:38.372Z",
-  "updated_at": "2026-08-30T11:26:03.766Z",
+  "updated_at": "2026-09-02T20:23:52.965Z",
   "started_at": null,
-  "closed_at": null,
+  "closed_at": "2026-09-02T20:23:52.965Z",
   "due_at": null,
   "defer_until": null,
   "parent": "tk-ygh",
   "labels": [
     "worktrees"
   ],
-  "notes": null,
+  "notes": "all constituent tasks merged + validated",
   "design": null,
   "acceptance_criteria": null,
   "estimated_minutes": null,
   "spec_id": null,
   "external_ref": null,
+  "branch": null,
   "metadata": {},
   "dependencies": [],
   "dependency_count": 0,
   "dependent_count": 0,
-  "comments": [],
-  "comment_count": 0
+  "comments": [
+    {
+      "id": "comment-cd710fbb-09ac-4d95-9c8c-1d1e392ff741",
+      "issue_id": "tk-yb6",
+      "author": "yuri",
+      "text": "COACH: all phase-3 constituent tasks closed and merged to master (tk-ucj, tk-zfi, tk-x4j, tk-y5l-gateway piece via tk-x4j, tk-ljk). Closing rollup.",
+      "created_at": "2026-09-02T20:23:52.644Z"
+    }
+  ],
+  "comment_count": 1
 }
