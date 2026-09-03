@@ -165,3 +165,29 @@ over 2dd4ff533..f1ccad45b lineage).
 Merge --no-ff tk-7m3-rework (f1ccad45b) over reverted 2dd4ff533 lineage.
 Master post-merge: go build ./... OK; kubernetesapply TestWorktree -run
 PASS (incl. TestWorktreeIngressClone); internal/cli Down|Worktree PASS.
+
+=== FINAL ADDENDUM — POST-MERGE VALIDATION ROUND 3 (2026-09-03, validator PM2) ===
+CONTEXT: task closed after r2 merge fffd87ac4 (commit b7af267ee). This round
+re-verifies the merged state on current master HEAD (233cafee7, which contains
+fffd87ac4 as ancestor) after subsequent work landed (tk-kxc evidence etc.),
+using the same private GOCACHE. Read-only except this evidence file.
+
+1) git log --oneline -1 -> 233cafee7 (fork: validation evidence for tk-kxc);
+   git merge-base --is-ancestor fffd87ac4 HEAD -> yes. The tk-7m3 merged
+   changeset is in current master.
+2) go test ./internal/controllers/core/kubernetesapply/ -count=1
+   -> ok  github.com/tilt-dev/tilt/internal/controllers/core/kubernetesapply  15.001s
+3) go test ... -count=1 -run 'TestWorktree' -v -> 10/10 PASS, including
+   TestWorktreeIngressClone (ingress clones), CloneStamping (stamping) and
+   SiblingDNSRewrite (sibling DNS) suites:
+   TestWorktreeCloneStamping, _ApplyCmdPath, _MainRunNoop,
+   TestWorktreeSiblingDNSRewrite, _Args, _StableUntouched,
+   TestWorktreeIngressClone, TestWorktreeGCClonesOrphanedClones,
+   TestWorktreeGCKeepsLiveAndForeignClones, TestWorktreeGC_NoWorktreesNoop.
+4) go build ./... -> exit 0 (BUILD OK; no output).
+
+VERDICT (round 3)
+-----------------
+No integration regression on current master; the closed task's merged state
+reproduces green. Note: the Worker8fkR4 completion notification seen this
+session is tk-8fk (docs guide) — different task, not part of tk-7m3 scope.
