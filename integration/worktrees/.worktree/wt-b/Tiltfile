@@ -1,0 +1,3 @@
+# -*- mode: Python -*-
+# wt-b's checkout: same strict-pointer form as wt-a (see ../Tiltfile).
+load_dynamic('../Tiltfile')

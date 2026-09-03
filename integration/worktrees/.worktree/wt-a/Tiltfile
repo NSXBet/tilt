@@ -1,0 +1,12 @@
+# -*- mode: Python -*-
+
+# The worktree checkout for wt-a. Content lives in its own Tiltfile so
+# discovery finds it (plan §2: a worktree is a .worktree/ subdir containing
+# a Tiltfile) while the run still executes THIS root Tiltfile re-rooted at
+# this checkout (plan §3 one-Tiltfile style).
+#
+# load_dynamic('../Tiltfile') is the strict form for repos that keep one
+# Tiltfile and want the worktree checkouts to be pure pointers; a checkout
+# may instead define its own resources (the worktree's definition wins,
+# plan §3).
+load_dynamic('../Tiltfile')

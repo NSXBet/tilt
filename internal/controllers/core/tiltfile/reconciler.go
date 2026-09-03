@@ -532,6 +532,17 @@ func (r *Reconciler) applyWorktreeBoundary(
 		mainManifests = mainRun.tlr.Manifests
 	}
 
+	// Idempotency: a parked TLR replays through handleLoaded and can reach
+	// this pass twice (e2e-caught double prefix `wt:<wt>_wt:<wt>_<name>` in
+	// the apiserver). A result whose manifests already carry clone names
+	// was rewritten on a previous pass — pass it through unchanged.
+	for _, m := range tlr.Manifests {
+		if worktree.IsCloneName(m.Name) {
+			logger.Get(ctx).Debugf("worktree %q: manifests already rewritten, skipping boundary pass", worktreeName)
+			return nil
+		}
+	}
+
 	result, err := worktree.ApplyBoundary(mainManifests, worktree.RunResult{
 		Name:      worktreeName,
 		Manifests: tlr.Manifests,
@@ -540,7 +551,28 @@ func (r *Reconciler) applyWorktreeBoundary(
 		return err
 	}
 	tlr.Manifests = result.Manifests
-	logger.Get(ctx).Debugf("worktree %q: rewrote %d manifest(s) at the engine boundary", worktreeName, len(result.Manifests))
+
+	// EnabledManifests must reference the engine-boundary names: the loader
+	// computed them from bare names, the boundary renamed the manifests, and
+	// a stale bare list disables every clone (toDisableConfigMaps computes
+	// isDisabled = name not in the enabled set, so the clones' disable
+	// ConfigMaps said isDisabled=true and their serve cmds never started).
+	if len(tlr.EnabledManifests) > 0 {
+		enabled := make(map[model.ManifestName]bool, len(tlr.EnabledManifests))
+		for _, mn := range tlr.EnabledManifests {
+			enabled[mn] = true
+		}
+		rewritten := make([]model.ManifestName, 0, len(tlr.EnabledManifests))
+		for _, m := range tlr.Manifests {
+			base, _ := worktree.SplitName(m.Name)
+			if enabled[base] {
+				rewritten = append(rewritten, m.Name)
+			}
+		}
+		tlr.EnabledManifests = rewritten
+	}
+
+	logger.Get(ctx).Debugf("worktree %q: rewrote %d manifest(s) at the engine boundary", worktreeName, len(tlr.Manifests))
 	return nil
 }
 
