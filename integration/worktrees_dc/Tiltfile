@@ -1,0 +1,20 @@
+# -*- mode: Python -*-
+
+# Root of the worktrees_dc fixture tree (plan §11, §4.5): two worktrees plus
+# main compose up simultaneously. The SAME Tiltfile executes per worktree
+# (plan §3) and branches on worktree.name(); docker_compose paths resolve
+# re-rooted, so the same relative path finds the checkout's yaml in a
+# worktree run (service wt-a / wt-b, authored binding 10110:8000) and the
+# root yaml in the main run (shared service `web`). Worktree runs rebind
+# their published host port through the port registry, so all three
+# containers coexist without clashes, and dc_resource(resource_deps=)
+# pins each worktree's deploy behind main's shared `web` (plan §3: deps
+# resolve same-worktree first, else main-defined).
+
+WT = worktree.name()
+
+if WT == "":
+    docker_compose('docker-compose.yaml')
+else:
+    docker_compose('docker-compose.yaml')
+    dc_resource(WT, resource_deps=['web'])

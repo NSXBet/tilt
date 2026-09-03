@@ -1,0 +1,5 @@
+# -*- mode: Python -*-
+# wt-a's checkout: discovery marker only (plan §3 one-Tiltfile style — the
+# root Tiltfile re-executes with worktree.name()=="wt-a" and path resolution
+# re-rooted HERE, so its docker_compose('docker-compose.yaml') finds this
+# checkout's yaml with the wt-a service).

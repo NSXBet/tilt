@@ -1,0 +1,8 @@
+version: '3'
+services:
+  web:
+    image: busybox
+    container_name: tilt_worktrees_dc_web
+    command: sh -c "echo '<worktree-dc-web>' > index.html && httpd -f -p 8000"
+    ports:
+    - "10110:8000"

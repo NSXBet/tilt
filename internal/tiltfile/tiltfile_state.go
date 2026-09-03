@@ -1683,6 +1683,20 @@ func (s *tiltfileState) sanitizeDependencies(ms []model.Manifest) error {
 		knownResources[m.Name] = true
 	}
 
+	// Multi-worktree (plan §3): a worktree run may depend on a shared
+	// resource defined by the MAIN run — the run's own manifest list can't
+	// see it yet, but the engine-boundary rewrite (worktree.applyPrefix)
+	// resolves deps "same-worktree first, else main-defined": a bare dep on
+	// a main-defined name stays bare and buildcontrol holds the worktree's
+	// first build until the shared resource is ready. Dropping unknown deps
+	// here would silently un-serialize worktree deploys (e2e-caught: two
+	// worktrees plus main composed up in the same instant and raced the
+	// docker network setup). Unknown deps in a worktree run therefore pass
+	// through; a dep that resolves to NEITHER main nor this run is rejected
+	// at the boundary pass (applyPrefix rewrites it to a clone name that
+	// fails the load).
+	keepUnknown := s.worktree != ""
+
 	// construct the graph and make sure all edges are valid
 	edges := make(map[interface{}][]interface{})
 	for i, m := range ms {
@@ -1692,6 +1706,11 @@ func (s *tiltfileState) sanitizeDependencies(ms []model.Manifest) error {
 				return fmt.Errorf("resource %s specified a dependency on itself", m.Name)
 			}
 			if _, ok := knownResources[b]; !ok {
+				if keepUnknown {
+					sanitizedDeps = append(sanitizedDeps, b)
+					fmt.Printf("DBG sanitize keep unknown dep %s -> %s (worktree=%q)\n", m.Name, b, s.worktree)
+					continue
+				}
 				logger.Get(s.ctx).Warnf("resource %s specified a dependency on unknown resource %s - dependency ignored", m.Name, b)
 				continue
 			}
