@@ -49,6 +49,7 @@ See blog post for additional information: https://blog.tilt.dev/2020/04/16/how-t
 	addTiltfileFlag(cmd, &c.fileName)
 	addKubeContextFlag(cmd)
 	addNamespaceFlag(cmd)
+	addWorktreesFlag(cmd)
 	addLogFilterFlags(cmd, "log-")
 	addLogFilterResourcesFlag(cmd)
 
@@ -99,7 +100,7 @@ func (c *ciCmd) run(ctx context.Context, args []string) error {
 
 	err = upper.Start(ctx, args, cmdCIDeps.TiltBuild,
 		c.fileName, store.TerminalModeStream, a.UserOpt(), cmdCIDeps.Token,
-		string(cmdCIDeps.CloudAddress))
+		string(cmdCIDeps.CloudAddress), worktreesFlag)
 	if err == nil {
 		_, _ = fmt.Fprintln(colorable.NewColorableStdout(),
 			color.GreenString("SUCCESS. All workloads are healthy."))

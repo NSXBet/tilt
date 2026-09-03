@@ -25,6 +25,7 @@ var (
 	snapshotViewPortFlag = 0
 	namespaceOverride    = ""
 	portForwardsFlag     = true
+	worktreesFlag        = false
 )
 
 func readEnvDefaults() error {
@@ -81,6 +82,13 @@ func addDevServerFlags(cmd *cobra.Command) {
 
 func addNamespaceFlag(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&namespaceOverride, "namespace", defaultNamespace, "Default namespace for Kubernetes resources (overrides default namespace from active context in kubeconfig)")
+}
+
+// addWorktreesFlag registers the multi-worktree flag (plan §10: the feature
+// ships dark-capable). Default OFF: with no .worktree/ dir (or the flag
+// unset) Tilt runs classic single-Tiltfile behavior.
+func addWorktreesFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&worktreesFlag, "worktrees", false, "also load and run every git worktree discovered in the worktree dir (default .worktree/, see worktree_config) alongside the main checkout")
 }
 
 func addLogFilterResourcesFlag(cmd *cobra.Command) {

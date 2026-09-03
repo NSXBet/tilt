@@ -94,6 +94,7 @@ local resources--i.e. those using serve_cmd--are terminated when you exit Tilt.
 	addNamespaceFlag(cmd)
 	addLogFilterFlags(cmd, "log-")
 	addLogFilterResourcesFlag(cmd)
+	addWorktreesFlag(cmd)
 	cmd.Flags().Lookup("logactions").Hidden = true
 	cmd.Flags().StringVar(&c.outputSnapshotOnExit, "output-snapshot-on-exit", "", "If specified, Tilt will dump a snapshot of its state to the specified path when it exits")
 
@@ -177,7 +178,8 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 	}
 
 	err = upper.Start(ctx, args, cmdUpDeps.TiltBuild,
-		c.fileName, termMode, a.UserOpt(), cmdUpDeps.Token, string(cmdUpDeps.CloudAddress))
+		c.fileName, termMode, a.UserOpt(), cmdUpDeps.Token, string(cmdUpDeps.CloudAddress),
+		worktreesFlag)
 	if err != context.Canceled {
 		return err
 	} else {

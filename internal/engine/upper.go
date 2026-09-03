@@ -45,11 +45,6 @@ import (
 // Upper seems like a poor and undescriptive name.
 type Upper struct {
 	store *store.Store
-
-	// Multi-worktree parallel development is staged behind this flag
-	// (plan §10: dark flag). True in `tilt up`; tests construct Upper
-	// directly and opt in by setting the field.
-	worktreesEnabled bool
 }
 
 type ServiceWatcherMaker func(context.Context, *store.Store) error
@@ -83,6 +78,7 @@ func (u Upper) Start(
 	analyticsUserOpt analytics.Opt,
 	token token.Token,
 	cloudAddress string,
+	worktreesEnabled bool,
 ) error {
 
 	startTime := time.Now()
@@ -98,7 +94,7 @@ func (u Upper) Start(
 	// creates one Tiltfile CR per execution. A missing worktree dir means no
 	// worktrees: classic single-Tiltfile behavior.
 	var worktrees []worktree.Worktree
-	if u.worktreesEnabled {
+	if worktreesEnabled {
 		worktrees, err = worktree.Discover(filepath.Dir(absTfPath), worktree.DefaultDir)
 		if err != nil {
 			return err
