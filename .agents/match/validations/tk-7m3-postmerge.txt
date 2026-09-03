@@ -160,3 +160,8 @@ gone (reverted). The approved rework branch (f1ccad45b) reproduces green:
 cli Down|Worktree pass. No integration regression vs the branch-only run.
 Feature lands on master when the Coach merges tk-7m3-rework (fast-forward
 over 2dd4ff533..f1ccad45b lineage).
+
+=== r2 MERGE (fffd87ac4, 2026-09-03) ===
+Merge --no-ff tk-7m3-rework (f1ccad45b) over reverted 2dd4ff533 lineage.
+Master post-merge: go build ./... OK; kubernetesapply TestWorktree -run
+PASS (incl. TestWorktreeIngressClone); internal/cli Down|Worktree PASS.
