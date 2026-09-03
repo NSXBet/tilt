@@ -323,7 +323,7 @@ func resourceRows(rs []view.Resource) ([]string, []resourceRow) {
 	var names []string
 	var rows []resourceRow
 	for _, wt := range worktrees {
-		names = append(names, "wt:"+wt+"/")
+		names = append(names, "wt:"+wt+"_")
 		rows = append(rows, resourceRow{isGroupHeader: true, worktree: wt, resourceIndex: -1})
 		for j, res := range rs {
 			if res.Worktree != wt {

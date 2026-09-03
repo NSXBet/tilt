@@ -13,9 +13,9 @@ import (
 func TestNextWorktreeFilter(t *testing.T) {
 	resources := []view.Resource{
 		{Name: "postgres"},
-		{Name: "wt:feat-auth/api", Worktree: "feat-auth"},
-		{Name: "wt:feat-auth/frontend", Worktree: "feat-auth"},
-		{Name: "wt:fix-bug/api", Worktree: "fix-bug"},
+		{Name: "wt:feat-auth_api", Worktree: "feat-auth"},
+		{Name: "wt:feat-auth_frontend", Worktree: "feat-auth"},
+		{Name: "wt:fix-bug_api", Worktree: "fix-bug"},
 	}
 
 	next, ok := nextWorktreeFilter(resources, "")
@@ -39,8 +39,8 @@ func TestNextWorktreeFilter(t *testing.T) {
 
 func TestFilterResourcesByWorktree(t *testing.T) {
 	main := view.Resource{Name: "postgres"}
-	wtA := view.Resource{Name: "wt:feat-auth/api", Worktree: "feat-auth"}
-	wtB := view.Resource{Name: "wt:fix-bug/api", Worktree: "fix-bug"}
+	wtA := view.Resource{Name: "wt:feat-auth_api", Worktree: "feat-auth"}
+	wtB := view.Resource{Name: "wt:fix-bug_api", Worktree: "fix-bug"}
 	all := []view.Resource{main, wtA, wtB}
 
 	assert.Equal(t, all, filterResourcesByWorktree(all, ""))
@@ -67,23 +67,23 @@ func TestResourceRowsSingleWorktreeUnchanged(t *testing.T) {
 
 func TestResourceRowsGroupedByWorktree(t *testing.T) {
 	rs := []view.Resource{
-		{Name: "wt:feat-auth/api", Worktree: "feat-auth"},
+		{Name: "wt:feat-auth_api", Worktree: "feat-auth"},
 		{Name: "postgres"},
-		{Name: "wt:fix-bug/api", Worktree: "fix-bug"},
-		{Name: "wt:feat-auth/frontend", Worktree: "feat-auth"},
+		{Name: "wt:fix-bug_api", Worktree: "fix-bug"},
+		{Name: "wt:feat-auth_frontend", Worktree: "feat-auth"},
 	}
 
 	names, rows := resourceRows(rs)
 
 	// main checkout's shared resources sort last; worktrees alphabetical;
 	// one header per worktree, registered as a scroll child under a name
-	// clones can't collide with (`wt:<wt>/` has no bare base segment).
+	// clones can't collide with (`wt:<wt>_` has no bare base segment).
 	expected := []string{
-		"wt:feat-auth/",
-		"wt:feat-auth/api",
-		"wt:feat-auth/frontend",
-		"wt:fix-bug/",
-		"wt:fix-bug/api",
+		"wt:feat-auth_",
+		"wt:feat-auth_api",
+		"wt:feat-auth_frontend",
+		"wt:fix-bug_",
+		"wt:fix-bug_api",
 		"postgres",
 	}
 	assert.Equal(t, expected, names)
@@ -115,7 +115,7 @@ func TestRenderWorktreeGroups(t *testing.T) {
 			},
 		},
 		view.Resource{
-			Name:     "wt:feat-auth/api",
+			Name:     "wt:feat-auth_api",
 			Worktree: "feat-auth",
 			ResourceInfo: view.K8sResourceInfo{
 				PodStatus: "Running",
@@ -123,7 +123,7 @@ func TestRenderWorktreeGroups(t *testing.T) {
 			},
 		},
 		view.Resource{
-			Name:     "wt:fix-bug/api",
+			Name:     "wt:fix-bug_api",
 			Worktree: "fix-bug",
 			ResourceInfo: view.K8sResourceInfo{
 				PodStatus: "Running",
@@ -146,7 +146,7 @@ func TestRenderWorktreeNameInRow(t *testing.T) {
 	rtf := newRendererTestFixture(t)
 
 	v := newView(view.Resource{
-		Name:     "wt:feat-auth/api",
+		Name:     "wt:feat-auth_api",
 		Worktree: "feat-auth",
 		ResourceInfo: view.K8sResourceInfo{
 			PodStatus: "Running",
