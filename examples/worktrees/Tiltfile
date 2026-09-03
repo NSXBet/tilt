@@ -1,0 +1,30 @@
+# -*- mode: Python -*-
+#
+# Run from this directory:
+#
+#   tilt up --worktrees
+#
+# Tilt executes this file once for the main checkout and once for every
+# .worktree/<name>/Tiltfile marker. `worktree.name()` is empty for main.
+
+worktree_config(port_range=(30000, 30100))
+
+WT = worktree.name()
+
+if WT == "":
+    # This foundation runs exactly once and is shared by every worktree.
+    local_resource(
+        "shared-api",
+        cmd="true",
+        serve_cmd=["./serve.sh", "shared", "10370"],
+        links=["http://localhost:10370"],
+    )
+else:
+    # Each checkout gets its own branch-local resource and authored port.
+    ports = {"feature-a": 10371, "feature-b": 10372}
+    local_resource(
+        "app-" + WT,
+        cmd="true",
+        serve_cmd=["./serve.sh", WT, str(ports[WT])],
+        links=["http://localhost:%d" % ports[WT]],
+    )

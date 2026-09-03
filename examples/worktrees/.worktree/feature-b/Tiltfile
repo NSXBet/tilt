@@ -1,0 +1,3 @@
+# -*- mode: Python -*-
+# Discovery marker for this checkout. The root Tiltfile is re-executed here.
+load_dynamic('../Tiltfile')
