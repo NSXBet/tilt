@@ -1273,6 +1273,18 @@ func wtPortRangeFor(t *testing.T, owner string) (int, int) {
 
 var wtRangeCounter atomic.Int64
 
+// releaseLRPorts frees the local_resource serve-port allocations a test
+// made (owner keys lr:<worktree>/<resource>, resource "web" here) so the
+// process-wide registry never leaks a sticky allocation into a later test.
+func releaseLRPorts(t *testing.T, worktrees ...string) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, wt := range worktrees {
+			portregistry.Release(wtLocalResourcePortOwner(wt, "web"))
+		}
+	})
+}
+
 // wtSetupWorktreeCheckout mirrors a real worktree run's layout: the root
 // Tiltfile stays at the repo root, and the worktree checkout (`.worktree/
 // <name>/`) holds the files the run re-roots path resolution at (plan §0:

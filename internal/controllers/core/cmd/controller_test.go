@@ -110,6 +110,43 @@ func TestServe(t *testing.T) {
 	f.assertLogMessage("foo", "Starting cmd sleep 60")
 }
 
+// Serve-port seam (tk-kxc): the serve process receives the LocalTarget's
+// deconflicted port through TILT_SERVE_PORT in its environment (injected by
+// the loader — see tiltfile translateLocal), and the env change is part of
+// the server's identity — a re-allocated port after a reload recreates the
+// serve Cmd, mirroring an args/dir/env change.
+func TestServePortEnvAndRestart(t *testing.T) {
+	f := newFixture(t)
+
+	t1 := time.Unix(1, 0)
+	c := model.ToHostCmdInDir("sleep 60", "testdir")
+	localTarget := model.NewLocalTarget("foo", model.Cmd{}, c, nil).
+		WithServePort(20001).
+		WithServeCmdEnv("TILT_SERVE_PORT=20001")
+	f.resourceFromTarget("foo", localTarget, t1)
+	f.step()
+	f.assertCmdMatches("foo-serve-1", func(cmd *Cmd) bool {
+		return cmd.Status.Running != nil
+	})
+	require.Equal(t, []string{"TILT_SERVE_PORT=20001"}, f.fe.processes["sleep 60"].env)
+
+	// A port change (a re-allocated registry port after a reload) lands in
+	// the env and restarts the server under a new Cmd: the controller
+	// deletes the owned Cmd, waits out the running process, then creates
+	// the replacement (two OnChange passes).
+	localTarget = model.NewLocalTarget("foo", model.Cmd{}, c, nil).
+		WithServePort(20002).
+		WithServeCmdEnv("TILT_SERVE_PORT=20002")
+	f.resourceFromTarget("foo", localTarget, t1)
+	f.step()
+	f.step()
+	f.assertCmdMatches("foo-serve-2", func(cmd *Cmd) bool {
+		return cmd.Status.Running != nil
+	})
+	f.assertCmdDeleted("foo-serve-1")
+	require.Equal(t, []string{"TILT_SERVE_PORT=20002"}, f.fe.processes["sleep 60"].env)
+}
+
 func TestServeReadinessProbe(t *testing.T) {
 	f := newFixture(t)
 

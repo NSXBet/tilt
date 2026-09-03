@@ -18,6 +18,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/controllers/apis/liveupdate"
 	"github.com/tilt-dev/tilt/internal/controllers/apiset"
 	"github.com/tilt-dev/tilt/internal/localexec"
+	"github.com/tilt-dev/tilt/internal/portregistry"
 	"github.com/tilt-dev/tilt/internal/tiltfile/cisettings"
 	"github.com/tilt-dev/tilt/internal/tiltfile/hasher"
 	"github.com/tilt-dev/tilt/internal/tiltfile/links"
@@ -1624,6 +1625,38 @@ func (s *tiltfileState) translateLocal() ([]model.Manifest, error) {
 			return nil, errors.Wrapf(err, "error in resource %s options", mn)
 		}
 
+		servePort := r.servePort
+		if servePort != 0 && s.worktree != "" {
+			// Worktree port deconfliction for local_resource serve ports
+			// (plan §4.5/§5): allocate through the registry so two worktrees
+			// (and main) can serve simultaneously. The allocation is keyed
+			// on the run's worktree + authored resource name — the same
+			// sticky contract as the DC wiring (wtPortOwner) and tk-zfi's
+			// portforward owner: stable across Tiltfile reloads, distinct
+			// across worktrees. The engine name would also work as the key
+			// (clones carry wt:<wt>_<name>) but has not been stamped yet:
+			// this pass runs pre-boundary. Main runs keep the authored port.
+			port, err := portregistry.Allocate(wtLocalResourcePortOwner(s.worktree, r.name), servePort)
+			if err != nil {
+				return nil, errors.Wrapf(err, "allocating worktree serve port for local_resource %q (authored port %d)",
+					r.name, servePort)
+			}
+			servePort = port
+		}
+
+		serveCmd := r.serveCmd
+		if servePort != 0 && servePort != r.servePort {
+			// The serve process learns its deconflicted port through the
+			// environment: ServeCmd has no fixed-port channel (the port may
+			// not be known when the Tiltfile runs — OS-fallback allocation
+			// happens here), so the Tiltfile author writes
+			// `serve_cmd="python main.py --port $TILT_SERVE_PORT"` and the
+			// loader injects the value. Main runs with an explicit port need
+			// no injection (the process already knows the authored port).
+			serveCmd.Env = append(serveCmd.Env[:len(serveCmd.Env):len(serveCmd.Env)],
+				fmt.Sprintf("%s=%d", ServePortEnvVar, servePort))
+		}
+
 		paths := append([]string{}, r.deps...)
 		paths = append(paths, r.threadDir)
 
@@ -1635,10 +1668,11 @@ func (s *tiltfileState) translateLocal() ([]model.Manifest, error) {
 			})
 		}
 
-		lt := model.NewLocalTarget(model.TargetName(r.name), r.updateCmd, r.serveCmd, r.deps).
+		lt := model.NewLocalTarget(model.TargetName(r.name), r.updateCmd, serveCmd, r.deps).
 			WithAllowParallel(r.allowParallel || r.updateCmd.Empty()).
 			WithLinks(r.links).
-			WithReadinessProbe(r.readinessProbe)
+			WithReadinessProbe(r.readinessProbe).
+			WithServePort(servePort)
 		lt.FileWatchIgnores = ignores
 
 		var mds []model.ManifestName

@@ -1,6 +1,8 @@
 package tiltfile
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,4 +107,134 @@ func localResourceMd(name string, deps ...string) model.Manifest {
 		model.Cmd{Argv: []string{"echo", "update"}, Dir: "/repo"}, model.Cmd{}, nil)
 	m.DeployTarget = lt
 	return m
+}
+
+// Acceptance (tk-kxc, plan §4.5/§5): a worktree run's local_resource serve
+// port is deconflicted through the port registry — distinct from the
+// authored binding, inside the configured range, carried on LocalTarget
+// (what the engine/gateway consume), and injected to the process through
+// TILT_SERVE_PORT. Main runs keep the authored port untouched.
+func TestLocalResource_WorktreeServePortDeconflict(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		worktree string
+	}{
+		{"main run keeps authored port", ""},
+		{"worktree run rebinds", "feat-auth"},
+		{"second worktree rebinds again", "fix-bug"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			min, max := wtPortRangeFor(t, "lrpd")
+			defer releaseLRPorts(t, tc.worktree)
+
+			f := newFixture(t)
+			f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
+			f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+			f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+			f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "keep"), "")
+
+			tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)
+			if tc.worktree != "" {
+				tf = ctrltiltfile.WorktreeTiltfile(tc.worktree, f.JoinPath("Tiltfile"), nil)
+			}
+			tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+			require.NoError(t, tlr.Error)
+			require.Len(t, tlr.Manifests, 1)
+
+			lt := tlr.Manifests[0].LocalTarget()
+			if tc.worktree == "" {
+				assert.Equal(t, 8080, lt.ServePort, "main keeps the authored port")
+				assert.NotContains(t, lt.ServeCmd.Env, "TILT_SERVE_PORT=8080",
+					"main needs no injection: the process already binds the authored port")
+				return
+			}
+
+			require.NotEqual(t, 8080, lt.ServePort, "worktree must not hold the authored port")
+			require.GreaterOrEqual(t, lt.ServePort, min)
+			require.LessOrEqual(t, lt.ServePort, max)
+			assert.Contains(t, lt.ServeCmd.Env, fmt.Sprintf("TILT_SERVE_PORT=%d", lt.ServePort),
+				"serve process learns the deconflicted port through the env")
+		})
+	}
+}
+
+// The acceptance test: two worktrees with the same authored serve port get
+// distinct registry allocations, and a same-worktree reload hands back the
+// same port (sticky contract — plan §5).
+func TestLocalResource_TwoWorktreesNoServePortClash(t *testing.T) {
+	wtPortRangeFor(t, "lrwt")
+	releaseLRPorts(t, "feat-auth", "fix-bug")
+
+	load := func(t *testing.T, f *fixture, wtName string, prev *TiltfileLoadResult) model.Manifest {
+		t.Helper()
+		tf := ctrltiltfile.WorktreeTiltfile(wtName, f.JoinPath("Tiltfile"), nil)
+		tlr := f.newTiltfileLoader().Load(f.ctx, tf, prev)
+		require.NoError(t, tlr.Error)
+		return tlr.Manifests[0]
+	}
+
+	newWtFixture := func(t *testing.T) *fixture {
+		f := newFixture(t)
+		f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
+		f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+		f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "keep"), "")
+		return f
+	}
+
+	f1 := newWtFixture(t)
+	m1 := load(t, f1, "feat-auth", nil)
+	f2 := newWtFixture(t)
+	m2 := load(t, f2, "fix-bug", nil)
+
+	p1 := m1.LocalTarget().ServePort
+	p2 := m2.LocalTarget().ServePort
+	require.NotEqual(t, p1, p2, "two worktrees must not hold the same serve port")
+	require.NotEqual(t, 8080, p1)
+	require.NotEqual(t, 8080, p2)
+
+	// Reload stability: the same worktree re-declaring the same resource
+	// keeps its allocation (the port does not churn on save).
+	reload := load(t, f1, "feat-auth", nil)
+	require.Equal(t, p1, reload.LocalTarget().ServePort)
+}
+
+// serve_port= without a registry conflict: the allocation honors the
+// requested port when it is free (portregistry contract), so a single
+// worktree still serves what it asked for when nothing else holds it.
+func TestLocalResource_WorktreeServePortRequestedFree(t *testing.T) {
+	min, max := wtPortRangeFor(t, "lrfree")
+	releaseLRPorts(t, "feat-auth")
+
+	f := newFixture(t)
+	f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+
+	lt := tlr.Manifests[0].LocalTarget()
+	require.GreaterOrEqual(t, lt.ServePort, min)
+	require.LessOrEqual(t, lt.ServePort, max)
+}
+
+// A serve_resource without serve_port= (or without serve_cmd) is untouched
+// by the seam in both runs — the registry is only consulted for explicit
+// ports.
+func TestLocalResource_WorktreeNoServePortUnchanged(t *testing.T) {
+	wtPortRangeFor(t, "lrnone")
+	releaseLRPorts(t, "feat-auth")
+
+	f := newFixture(t)
+	f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py")`)
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+
+	lt := tlr.Manifests[0].LocalTarget()
+	assert.Equal(t, 0, lt.ServePort)
+	assert.Empty(t, lt.ServeCmd.Env)
 }

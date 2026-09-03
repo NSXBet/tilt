@@ -18,11 +18,30 @@ import (
 const testDeprecationMsg = "test() is deprecated and will be removed in a future release.\n" +
 	"Change this call to use `local_resource(..., allow_parallel=True)`"
 
+// ServePortEnvVar carries the deconflicted serve port to the serve process:
+// the loader injects it into ServeCmd.Env for worktree runs (see
+// translateLocal). The Tiltfile author binds
+// `$TILT_SERVE_PORT` in serve_cmd.
+const ServePortEnvVar = "TILT_SERVE_PORT"
+
+// wtLocalResourcePortOwner is the portregistry allocation key for one
+// worktree run's local_resource serve port: stable across reloads (same
+// worktree + authored name → same owner → same port) and distinct across
+// worktrees and resources. Mirrors wtPortOwner (docker_compose.go) — the
+// `lr:` prefix namespaces local_resource allocations away from DC ones.
+func wtLocalResourcePortOwner(worktree, resourceName string) string {
+	return fmt.Sprintf("lr:%s/%s", worktree, resourceName)
+}
+
 type localResource struct {
 	name      string
 	updateCmd model.Cmd
 	serveCmd  model.Cmd
-	// The working directory of the execution thread where the local resource was created.
+	// Local port the serve process binds (serve_port=). Authoritative in
+	// worktree runs: the loader rewrites it through portregistry.Allocate
+	// and injects TILT_SERVE_PORT so the process binds the deconflicted
+	// port (plan §4.5/§5). Main runs keep the authored value.
+	servePort     int
 	threadDir     string
 	deps          []string
 	triggerMode   triggerMode
@@ -43,6 +62,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 	var triggerMode triggerMode
 	var readinessProbe probe.Probe
 	var updateCmdDirVal, serveCmdDirVal starlark.Value
+	var servePortVal value.Int32
 
 	deps := value.NewLocalPathListUnpacker(thread)
 
@@ -77,6 +97,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		"readiness_probe?", &readinessProbe,
 		"dir?", &updateCmdDirVal,
 		"serve_dir?", &serveCmdDirVal,
+		"serve_port?", &servePortVal,
 	); err != nil {
 		return nil, err
 	}
@@ -116,6 +137,11 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		return nil, fmt.Errorf("local_resource must have a cmd and/or a serve_cmd, but both were empty")
 	}
 
+	servePort := servePortVal.Int32()
+	if servePort != 0 && serveCmd.Empty() {
+		return nil, fmt.Errorf("local_resource: 'serve_port' specified but 'serve_cmd' is empty")
+	}
+
 	probeSpec := readinessProbe.Spec()
 	if probeSpec != nil && serveCmd.Empty() {
 		s.logger.Warnf("Ignoring readiness probe for local resource %q (no serve_cmd was defined)", name)
@@ -126,6 +152,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		name:           string(name),
 		updateCmd:      updateCmd,
 		serveCmd:       serveCmd,
+		servePort:      int(servePort),
 		threadDir:      starkit.AbsWorkingDir(thread),
 		deps:           deps.Value,
 		triggerMode:    triggerMode,

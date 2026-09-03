@@ -16,6 +16,12 @@ type LocalTarget struct {
 	Links    []Link   // zero+ links assoc'd with this resource (to be displayed in UIs)
 	Deps     []string // a list of ABSOLUTE file paths that are dependencies of this target
 
+	// Local port the serve process binds (local_resource serve_port=, plan
+	// §4.5/§5). Authoritative in worktree runs: the loader allocates it
+	// through portregistry (keyed per worktree + resource) and injects
+	// TILT_SERVE_PORT into ServeCmd.Env so the process binds the
+	// deconflicted port. Main runs keep the authored value; 0 = unset.
+	ServePort        int
 	FileWatchIgnores []v1alpha1.IgnoreDef
 
 	// Indicates that we should allow this to run in parallel with other
@@ -75,6 +81,19 @@ func (lt LocalTarget) WithAllowParallel(val bool) LocalTarget {
 
 func (lt LocalTarget) WithLinks(links []Link) LocalTarget {
 	lt.Links = links
+	return lt
+}
+
+// WithServePort returns a copy carrying the port the serve process binds.
+func (lt LocalTarget) WithServePort(port int) LocalTarget {
+	lt.ServePort = port
+	return lt
+}
+
+// WithServeCmdEnv returns a copy with one more environment entry for the
+// serve process (used by the loader to inject TILT_SERVE_PORT).
+func (lt LocalTarget) WithServeCmdEnv(kv string) LocalTarget {
+	lt.ServeCmd.Env = append(lt.ServeCmd.Env, kv)
 	return lt
 }
 

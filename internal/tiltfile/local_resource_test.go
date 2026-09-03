@@ -38,6 +38,15 @@ local_resource("test", cmd="echo hi", serve_dir="./foo")
 	f.loadErrString("'serve_dir' specified but 'serve_cmd' is empty")
 }
 
+func TestLocalResourceServePortWithoutServeCmd(t *testing.T) {
+	f := newFixture(t)
+
+	f.file("Tiltfile", `
+local_resource("test", cmd="echo hi", serve_port=8080)
+`)
+	f.loadErrString("'serve_port' specified but 'serve_cmd' is empty")
+}
+
 func TestLocalResourceDirWithCmdWorks(t *testing.T) {
 	f := newFixture(t)
 
