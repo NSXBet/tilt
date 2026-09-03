@@ -19,7 +19,10 @@ import (
 // WebSocket upgrades pass through: httputil.ReverseProxy handles the
 // 101 Switching Protocols hop for h1 upgrades natively.
 
-const gatewayHostSuffix = ".tilt.localhost"
+// GatewayHostSuffix is the gateway host-router's domain: <wt> + this suffix
+// routes to that worktree's HTTP endpoint; every other host falls through to
+// the main UI. Shared contract with the webview's copy — keep both in sync.
+const GatewayHostSuffix = ".tilt.localhost"
 
 // gatewayWorktree extracts the worktree name from a gateway Host header
 // ("<wt>.tilt.localhost"), or "" when the host is not a gateway host.
@@ -29,10 +32,10 @@ func gatewayWorktree(host string) string {
 		h = h[:i]
 	}
 	h = strings.ToLower(h)
-	if !strings.HasSuffix(h, gatewayHostSuffix) {
+	if !strings.HasSuffix(h, GatewayHostSuffix) {
 		return ""
 	}
-	return strings.TrimSuffix(h, gatewayHostSuffix)
+	return strings.TrimSuffix(h, GatewayHostSuffix)
 }
 
 // worktreeEndpoint returns the HTTP endpoint to serve for the given worktree,

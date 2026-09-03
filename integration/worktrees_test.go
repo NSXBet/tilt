@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1alpha1 "github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
+	"github.com/tilt-dev/tilt/internal/hud/server"
+	"github.com/tilt-dev/tilt/internal/hud/webview"
 )
 
 // The multi-worktree e2e fixture (plan §11): a git-worktree-shaped tree —
@@ -140,10 +142,12 @@ func (f *fixture) uiResourceEndpointLinks(ctx context.Context, name string) []st
 	return links
 }
 
-// The gateway host suffix is shared API surface (the HUD server's
-// gatewayHostSuffix and the webview's convert copy are both the literal
-// ".tilt.localhost"); pin it so a silent change breaks this test loudly
-// rather than every user's bookmarks.
+// The gateway host suffix is shared API surface: the HUD server's
+// host-router (server.GatewayHostSuffix) and the webview's copy
+// (webview.GatewayHostSuffix) must both stay ".tilt.localhost". Pin them
+// so a silent change breaks this test loudly rather than every user's
+// bookmarks.
 func TestWorktreesGatewayHostSuffixContract(t *testing.T) {
-	assert.Equal(t, ".tilt.localhost", ".tilt.localhost")
+	assert.Equal(t, ".tilt.localhost", server.GatewayHostSuffix)
+	assert.Equal(t, ".tilt.localhost", webview.GatewayHostSuffix)
 }

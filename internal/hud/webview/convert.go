@@ -235,8 +235,10 @@ func ToUIResourceList(state store.EngineState, disableSources map[string][]v1alp
 }
 
 // gatewayHostSuffix is the shared gateway domain (plan §6): the HUD server's
-// host-router serves <wt>.tilt.localhost at the worktree's HTTP endpoint.
-const gatewayHostSuffix = ".tilt.localhost"
+// host-router (server.GatewayHostSuffix) serves <wt>.tilt.localhost at the
+// worktree's HTTP endpoint. A literal: webview cannot import the server
+// package (import cycle); the integration contract test pins both symbols.
+const GatewayHostSuffix = ".tilt.localhost"
 
 // withGatewayEndpointLinks augments the endpoint links of a worktree resource
 // with the gateway URL (<wt>.tilt.localhost:<web port>) for its first HTTP
@@ -264,7 +266,7 @@ func withGatewayEndpointLinks(name model.ManifestName, m model.Manifest, endpoin
 		if port == "" {
 			port = "80"
 		}
-		gw, err := url.Parse(fmt.Sprintf("http://%s%s:%s%s", wt, gatewayHostSuffix, port, u.Path))
+		gw, err := url.Parse(fmt.Sprintf("http://%s%s:%s%s", wt, GatewayHostSuffix, port, u.Path))
 		if err != nil {
 			continue
 		}
