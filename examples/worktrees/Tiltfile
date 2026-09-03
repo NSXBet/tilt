@@ -5,7 +5,7 @@
 #   tilt up --worktrees
 #
 # Tilt executes this file once for the main checkout and once for every
-# .worktree/<name>/Tiltfile marker. `worktree.name()` is empty for main.
+# .worktree/<name>/Tiltfile checkout. `worktree.name()` is empty for main.
 
 worktree_config(port_range=(30000, 30100))
 

@@ -1,9 +1,9 @@
 # Worktree example
 
-A minimal, runnable example of Tilt's multi-worktree mode. One root
-`Tiltfile` starts shared infrastructure once, then Tilt discovers each
-`.worktree/<name>/Tiltfile` and re-executes the root Tiltfile in that
-checkout.
+A minimal, runnable example of Tilt's multi-worktree mode. Every directory in
+`.worktree/` is a full checkout of the example, with the same `Tiltfile` and
+`serve.sh` as the main checkout. Tilt discovers each nested `Tiltfile`, then
+re-executes the root Tiltfile with that checkout as its working directory.
 
 ## Run it
 
@@ -38,25 +38,19 @@ remain available as the fallback.
 ├── Tiltfile
 ├── serve.sh
 └── .worktree/
-    ├── feature-a/
+    ├── feature-a/          # full checkout: same Tiltfile + serve.sh
     │   ├── Tiltfile
     │   └── serve.sh
-    └── feature-b/
+    └── feature-b/          # full checkout: same Tiltfile + serve.sh
         ├── Tiltfile
         └── serve.sh
 ```
 
-The two nested Tiltfiles are intentionally only discovery markers:
-
-```python
-load_dynamic('../Tiltfile')
-```
-
-They model checkouts that keep one shared root Tiltfile. The launchers are
-copied into each checkout because `serve_cmd` executes with that checkout as
-its working directory. In a real repository, replace these sample directories
-with `git worktree add .worktree/<branch>` checkouts; each only needs a
-`Tiltfile` to be discovered.
+The nested directories intentionally mirror the root files. In a real
+repository, create them with `git worktree add .worktree/<branch>`: Git
+provides the same tracked files at each branch's revision. `--worktrees`
+discovers the nested `Tiltfile` entries, but executes the root Tiltfile in
+each checkout; changes on a branch therefore apply only to that branch's run.
 
 For the full API, lifecycle behavior, Docker Compose isolation, and the
 hardcoded `kubectl -n` caveat, see [`../../docs/worktrees.md`](../../docs/worktrees.md).
