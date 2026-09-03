@@ -3,6 +3,7 @@ package worktree
 import (
 	"strings"
 
+	"github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/pkg/model"
 )
 
@@ -79,6 +80,14 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 			}
 		} else {
 			m.Name = ManifestName(name, string(m.Name))
+			// Stamp the worktree label (plan §4.2): the gateway host-router
+			// (isWorktreeManifest), the endpoint-link gateway URLs
+			// (withGatewayEndpointLinks) and the TUI/web worktree grouping
+			// all resolve a manifest's worktree from this label.
+			if m.Labels == nil {
+				m.Labels = make(map[string]string, 1)
+			}
+			m.Labels[v1alpha1.LabelWorktree] = name
 		}
 		out = append(out, m)
 	}

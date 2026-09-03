@@ -54,6 +54,17 @@ func prefixRun(manifests []model.Manifest, tf *v1alpha1.Tiltfile, main []model.M
 	out := worktree.RewriteRun(manifests, wtName, main)
 	source := model.ManifestName(tiltfile.TiltfileName(wtName))
 	for i := range out {
+		// Stamp the worktree label (plan §4.2): the gateway host-router
+		// (isWorktreeManifest), the endpoint-link gateway URLs
+		// (withGatewayEndpointLinks) and the TUI/web worktree grouping
+		// all resolve a manifest's worktree from this label. Rewriting
+		// runs at the controller seam keeps prefix.go engine-only; shared
+		// manifests (bare names, un-renamed) are skipped — their label
+		// stays empty (they belong to no single worktree).
+		if out[i].Labels == nil {
+			out[i].Labels = make(map[string]string, 1)
+		}
+		out[i].Labels[v1alpha1.LabelWorktree] = wtName
 		out[i].SourceTiltfile = source
 		// Stamp the K8s target's apply spec with the worktree name, so
 		// apply-time clone stamping (kubernetesapply/worktree_clone.go) fires
