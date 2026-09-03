@@ -1,0 +1,76 @@
+tk-kxc validation evidence — serve-port seam for local_resource (commit 38ccb7643 on branch tk-kxc)
+Validator: PM2 | 2026-09-03 | branch worktree: /Users/yuri/Workdir/Nsx/tilt/.worktrees/tk-kxc
+
+CRITERION -> EVIDENCE MAPPING
+=============================
+
+1. LocalTarget.ServePort field + WithServePort/WithServeCmdEnv helpers (pkg/model/local_target.go)
+   -> Diff reviewed hunk by hunk: field + 2 immutable helpers, doc comment references
+      plan §4.5/§5 and the env transport. go build ./... green, go vet green, gofmt clean.
+
+2. local_resource(serve_port=) kwarg with serve_cmd validation (internal/tiltfile/local_resource.go)
+   -> servePortVal unpacked ("serve_port?"), error "'serve_port' specified but 'serve_cmd' is
+      empty" mirrors the existing serve_dir error style. test() shares the same unpack path,
+      so test(serve_port=) works identically.
+      TEST: TestLocalResourceServePortWithoutServeCmd PASS.
+
+3. Worktree runs allocate through portregistry.Allocate keyed "lr:<worktree>/<resource>";
+   main runs keep the authored port (internal/tiltfile/tiltfile_state.go translateLocal)
+   -> Allocation only fires when servePort != 0 && s.worktree != "". Owner key helper
+      wtLocalResourcePortOwner mirrors wtPortOwner (docker_compose.go) with lr: namespace.
+      port_range honored: tiltfile.go:259 portregistry.SetPortRange(wtState.PortMin, wtState.PortMax)
+      runs at load; Allocate falls back to OS :0 when no range/added out of range; sticky
+      via byOwner map (never revoked on reload).
+   -> Injection: TILT_SERVE_PORT=<allocated> appended to ServeCmd.Env only when the
+      allocation REWROTE the port (servePort != r.servePort) — main runs and free-requested
+      worktree allocations that kept the authored port skip the injection, exactly as the
+      comment documents. Env slice appended on a full-slice-expression copy (no aliasing).
+
+4. Engine consumption (internal/engine/local/servercontroller.go + cmd controller)
+   -> CmdServerSpec.Env = lt.ServeCmd.Env (servercontroller.go:137); cmdSpec equality in
+      handleServer includes Env, so a re-allocated port after reload recreates the serve
+      Cmd (delete + wait + create — existing machinery, no new controller code needed).
+      TEST: TestServePortEnvAndRestart PASS (env rides the process + restart on change).
+
+5. Tests — ALL PASS (go test ./internal/tiltfile/ ./internal/controllers/core/cmd/
+   ./internal/portregistry/ ./pkg/model/ -count=1; full tiltfile pkg passes except
+   pre-existing baseline TestKustomizeFlags/TestKustomizeBin — kustomize binary absent,
+   fails identically on clean master; verified).
+   New tests:
+   - TestLocalResource_WorktreeServePortDeconflict (3 subtests: main keeps authored,
+     wt rebinds into range, 2nd wt distinct) PASS
+   - TestLocalResource_TwoWorktreesNoServePortClash (distinct ports + reload sticky) PASS
+   - TestLocalResource_WorktreeServePortRequestedFree PASS
+   - TestLocalResource_WorktreeNoServePortUnchanged PASS
+   - TestLocalResourceServePortWithoutServeCmd PASS
+   - TestServePortEnvAndRestart PASS
+   Also PASS: TestCreateTiltfile_Worktrees/NoWorktrees (engine/configs), 4 worktree
+   reconciler tests (controllers/core/tiltfile), DC worktree port tests,
+   -race on the two concurrency-relevant new tests.
+
+6. LIVE BINARY E2E (main-run surface; go build -o tilt ./cmd/tilt from tk-kxc)
+   -> tilt up --stream --port 20350 in /tmp fixture repo with
+      local_resource("web", "echo update", serve_cmd="python3 serve.py", serve_port=8080)
+      * Tiltfile loads ("Successfully loaded Tiltfile"), web resource: updateStatus=ok,
+        runtimeStatus=ok, serve process running (PID via API localResourceInfo.pid)
+      * Serve process env inspected via `ps eww <pid>`: NO TILT_SERVE_PORT — main run
+        keeps authored port, no injection. Contract verified on the real binary.
+      * `tilt alpha tiltfile-result -f Tiltfile` (real production loader, structured
+        JSON): LocalTarget shows ServePort: 8080, ServeCmd.Env: null — pass-through
+        confirmed from the binary itself (saved: tk-kxc-tiltfile-result-main.json)
+      * HUD served at :20350 — screenshots:
+        validations/tk-kxc-hud-main.png (dashboard: resources (Tiltfile) + web, v0.37.7)
+        validations/tk-kxc-hud-web-resource.png (web detail: Local, Runtime Ready)
+        Browser snapshot text of the resource row: "web | Local | Updated in 0.3s |
+        Runtime Ready" — HUD renders the local_resource correctly.
+   -> WORKTREE live run: NOT reachable through the shipped CLI. upper.worktreesEnabled
+      (internal/engine/upper.go:52,101) is a dark flag (plan §10) never set true
+      anywhere in prod wiring — worktree discovery can't trigger without a code change
+      (forbidden for validation). The worktree allocation path IS exercised by the
+      5 new loader tests through the real production loader
+      (ctrltiltfile.WorktreeTiltfile + f.newTiltfileLoader().Load -> SetPortRange ->
+      translateLocal -> portregistry.Allocate), not a mock of the seam under test.
+
+VERDICT
+=======
+All acceptance criteria verified. Approved.

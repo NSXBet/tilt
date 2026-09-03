@@ -1,0 +1,112 @@
+{
+  "Manifests": [
+    {
+      "Name": "web",
+      "ImageTargets": null,
+      "DeployTarget": {
+        "UpdateCmdSpec": {
+          "args": [
+            "sh",
+            "-c",
+            "echo update"
+          ],
+          "dir": "/private/tmp/pm2-lr-e2e/serveapp"
+        },
+        "Name": "web",
+        "ServeCmd": {
+          "Argv": [
+            "sh",
+            "-c",
+            "python3 serve.py"
+          ],
+          "Dir": "/private/tmp/pm2-lr-e2e/serveapp",
+          "Env": null,
+          "EchoOff": false
+        },
+        "Links": null,
+        "Deps": null,
+        "ServePort": 8080,
+        "FileWatchIgnores": null,
+        "AllowParallel": false,
+        "ReadinessProbe": null,
+        "ServeCmdDisableSource": null
+      },
+      "TriggerMode": 0,
+      "ResourceDependencies": null,
+      "SourceTiltfile": "",
+      "Labels": {}
+    }
+  ],
+  "EnabledManifests": [
+    "web"
+  ],
+  "Tiltignore": {
+    "LocalPath": "",
+    "Source": "",
+    "Patterns": null
+  },
+  "ConfigFiles": [
+    "/private/tmp/pm2-lr-e2e/serveapp/.tiltignore",
+    "/private/tmp/pm2-lr-e2e/serveapp/Tiltfile"
+  ],
+  "FeatureFlags": {
+    "bulk_disable_resources": false,
+    "cluster_refresh": false,
+    "disable_resources": true,
+    "events": true,
+    "facets": true,
+    "labels": true,
+    "live_update_v2": true,
+    "multiple_containers_per_pod": true,
+    "offline_snapshot_creation": true,
+    "snapshots": true,
+    "update_history": false
+  },
+  "TeamID": "",
+  "TelemetrySettings": {
+    "Cmd": {
+      "Argv": null,
+      "Dir": "",
+      "Env": null,
+      "EchoOff": false
+    },
+    "Workdir": "",
+    "Period": 60000000000
+  },
+  "Secrets": {},
+  "Error": null,
+  "DockerPruneSettings": {
+    "Enabled": true,
+    "MaxAge": 21600000000000,
+    "NumBuilds": 0,
+    "Interval": 3600000000000,
+    "KeepRecent": 2
+  },
+  "AnalyticsOpt": 0,
+  "VersionSettings": {
+    "CheckUpdates": true
+  },
+  "UpdateSettings": {
+    "SuppressUnusedImageWarnings": null
+  },
+  "WatchSettings": {
+    "Ignores": null
+  },
+  "DefaultRegistry": null,
+  "ObjectSet": {},
+  "Hashes": {
+    "TiltfileSHA256": "d926388642107da8b02136e62ebc4c682618a35ed15326801e29c5d80a513400",
+    "AllFilesSHA256": "d926388642107da8b02136e62ebc4c682618a35ed15326801e29c5d80a513400"
+  },
+  "CISettings": {
+    "timeout": "30m0s",
+    "readinessTimeout": "5m0s"
+  },
+  "WorktreeConfig": {
+    "Dir": ".worktree",
+    "PortMin": 25060,
+    "PortMax": 25080,
+    "Gateway": true,
+    "Worktree": ""
+  }
+}
