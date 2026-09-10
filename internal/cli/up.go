@@ -18,6 +18,7 @@ import (
 	"github.com/tilt-dev/tilt/internal/controllers"
 	engineanalytics "github.com/tilt-dev/tilt/internal/engine/analytics"
 	"github.com/tilt-dev/tilt/internal/hud/prompt"
+	"github.com/tilt-dev/tilt/internal/hud/server"
 	"github.com/tilt-dev/tilt/internal/store"
 	"github.com/tilt-dev/tilt/internal/store/liveupdates"
 	"github.com/tilt-dev/tilt/pkg/assets"
@@ -232,6 +233,10 @@ func provideWebHost() model.WebHost {
 
 func provideWebPort() model.WebPort {
 	return model.WebPort(webPortFlag)
+}
+
+func provideGatewayPort() server.GatewayPort {
+	return server.GatewayPort(gatewayPortFlag)
 }
 
 func provideWebURL(webHost model.WebHost, webPort model.WebPort) (model.WebURL, error) {

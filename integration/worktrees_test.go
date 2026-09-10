@@ -7,7 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,9 +18,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	v1alpha1 "github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 	"github.com/tilt-dev/tilt/internal/hud/server"
 	"github.com/tilt-dev/tilt/internal/hud/webview"
+	v1alpha1 "github.com/tilt-dev/tilt/pkg/apis/core/v1alpha1"
 )
 
 // The multi-worktree e2e fixture (plan §11): a git-worktree-shaped tree —
@@ -51,16 +54,18 @@ func TestWorktrees(t *testing.T) {
 	defer cancel()
 
 	// Wait for all three servers to come up via their raw ports: the shared
-	// main-run server on 10070, each worktree's own server in its checkout.
+	// main-run server on 10070, and the two worktree servers somewhere in
+	// the pool. Both worktree runs request serve_port=10071; whichever
+	// Tiltfile loads first keeps it and the registry hands the other the
+	// next free pool port — so the port→checkout mapping is load-order
+	// dependent. Require the exact response SET on {10071, 10072}: both
+	// checkouts served, on distinct ports, and neither stole 10070.
 	f.WaitUntil(ctx, "shared server", func() (string, error) {
 		return f.CurlBody("http://localhost:10070/")
 	}, "shared-response")
-	f.WaitUntil(ctx, "wt-a server", func() (string, error) {
-		return f.CurlBody("http://localhost:10071/")
-	}, "wt-a-response")
-	f.WaitUntil(ctx, "wt-b server", func() (string, error) {
-		return f.CurlBody("http://localhost:10072/")
-	}, "wt-b-response")
+
+	portsByWt := waitWorktreeServers(ctx, f)
+	require.Len(t, portsByWt, 2, "both worktree servers must come up on distinct pool ports")
 
 	// ── gateway routing: <wt>.tilt.localhost:<hud port> hits that
 	// worktree's server, by body — the strongest signal the reverse proxy
@@ -92,17 +97,107 @@ func TestWorktrees(t *testing.T) {
 
 	// ── endpoint links: the gateway URL goes first, the raw localhost
 	// fallback follows (plan §8/§12) ──
-	// Engine-internal clone name: `wt:<worktree>_<name>` (plan §4.3).
-	links := f.uiResourceEndpointLinks(ctx, "wt:wt-a_wt-a")
-	require.Contains(t, links, "http://wt-a.tilt.localhost:10071",
+	// Engine-internal clone name: `wt:<worktree>_<name>` (plan §4.3). The
+	// links are synthesized from the RUNTIME serve port, so the expected
+	// port comes from the probe above, not from the authored request.
+	wtAPort, ok := portsByWt["wt-a"]
+	require.True(t, ok, "probe must have located wt-a's server")
+	links := f.uiResourceEndpointLinks(ctx, "wt:wt-a_app")
+	require.Contains(t, links, fmt.Sprintf("http://wt-a.tilt.localhost:%d/", wtAPort),
 		"gateway link must be offered for the worktree resource (links: %v)", links)
-	require.Contains(t, links, "http://localhost:10071",
+	require.Contains(t, links, fmt.Sprintf("http://localhost:%d/", wtAPort),
 		"raw localhost fallback must be kept for proxies that cannot resolve *.localhost (links: %v)", links)
 
 	// The main run's shared resource keeps plain links — no gateway URL
 	// (plan §8: main-run resources are returned unchanged).
 	links = f.uiResourceEndpointLinks(ctx, "shared-infra")
 	assert.NotContains(t, links, "tilt.localhost", "main-run resource must not gain a gateway link")
+}
+
+// The opt-in gateway port (--gateway-port) is a second listener serving the
+// exact same handler as the main HUD port. This pins the contract that the
+// extra port carries the full gateway host-routing — worktree hosts proxy
+// to their backends, bare hosts fall through to the main UI — which is the
+// prerequisite for running it on a privileged port via the one-shot
+// bind-and-drop helper (docs/worktrees.md, "Gateway without a port").
+func TestWorktreesGatewayPort(t *testing.T) {
+	f := newFixture(t, "worktrees")
+	f.tilt.Environ["TILT_DISABLE_HUD_AUTH"] = "1"
+	port := f.tilt.port
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	gatewayPort := l.Addr().(*net.TCPAddr).Port
+	require.NoError(t, l.Close())
+
+	f.TiltUp("--worktrees", "--gateway-port", strconv.Itoa(gatewayPort))
+
+	// Worktree host on the opt-in port proxies to that worktree's backend.
+	// Raw polling (no fixture.Curl): transient 502/503 while the worktree
+	// servers come up must not fail the test — only the final require does.
+	deadline := time.Now().Add(45 * time.Second)
+	gotA := ""
+	for time.Now().Before(deadline) {
+		resp, err := http.Get("http://wt-a.tilt.localhost:" + strconv.Itoa(gatewayPort) + "/")
+		if err == nil {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				gotA = string(body)
+				break
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	require.Equal(t, "wt-a-response", gotA,
+		"wt-a.tilt.localhost on the gateway port must proxy to wt-a's server")
+
+	// Bare host on the opt-in port falls through to the main UI; the main
+	// HUD port is untouched by the extra listener.
+	for _, u := range []string{
+		fmt.Sprintf("http://localhost:%d/", gatewayPort),
+		fmt.Sprintf("http://localhost:%d/", port),
+	} {
+		resp, err := http.Get(u)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.NoError(t, err)
+		assert.NotContains(t, string(body), "-response",
+			"%s must serve the main UI, not a worktree", u)
+	}
+}
+
+// waitWorktreeServers polls both pool ports until each has returned one of
+// the two known worktree responses (in either order — the port→checkout
+// mapping depends on which worktree's Tiltfile loads first) and returns the
+// worktree → port mapping. On context timeout it returns whatever was
+// identified; the caller asserts completeness.
+func waitWorktreeServers(ctx context.Context, f *fixture) map[string]int {
+	responses := map[string]string{
+		"wt-a-response": "wt-a",
+		"wt-b-response": "wt-b",
+	}
+	portsByWt := map[string]int{}
+	for {
+		for _, p := range []int{10071, 10072} {
+			body, err := f.CurlBody(fmt.Sprintf("http://localhost:%d/", p))
+			if err != nil {
+				continue
+			}
+			if wt, ok := responses[body]; ok {
+				portsByWt[wt] = p
+			}
+		}
+		if len(portsByWt) == 2 {
+			return portsByWt
+		}
+		select {
+		case <-ctx.Done():
+			return portsByWt
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
 }
 
 // CurlBody fetches a URL and returns the body, tolerating transient

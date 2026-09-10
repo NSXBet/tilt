@@ -372,6 +372,24 @@ func TestManifestTargetEndpointsWorktreeIgnoresStableSources(t *testing.T) {
 	require.Equal(t, "http://localhost:32771/", actual[0].URLString())
 }
 
+// Worktree-run local resource with no authored links (fork, plan §6/§8):
+// the clone's endpoint is its registry-allocated serve port — the gateway
+// routes <wt>.tilt.localhost there and the UI links are derived from it.
+// A main-run local resource with the same shape gets NO synthesized links
+// (upstream behavior unchanged).
+func TestManifestTargetEndpointsWorktreeLocalServePort(t *testing.T) {
+	wt := model.Manifest{Name: "wt:feat_auth_web"}.
+		WithLabels(map[string]string{"tilt.dev/worktree": "feat-auth"})
+	wt = wt.WithDeployTarget(model.LocalTarget{ServePort: 18100})
+
+	actual := ManifestTargetEndpoints(NewManifestTarget(wt))
+	require.Len(t, actual, 1, "worktree local clone must expose its serve port as its endpoint")
+	require.Equal(t, "http://localhost:18100/", actual[0].URLString())
+
+	main := model.Manifest{Name: "web"}.WithDeployTarget(model.LocalTarget{ServePort: 18100})
+	require.Empty(t, ManifestTargetEndpoints(NewManifestTarget(main)),
+		"main-run local resources must not gain synthesized links")
+}
 func TestManifestTargetEndpointsWorktreeRawTCPPortForward(t *testing.T) {
 	// Postgres shape: TCP service, no HTTP semantics — the endpoint is the
 	// plain localhost:<registry port> binding the registry allocated.

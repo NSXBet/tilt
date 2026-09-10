@@ -43,10 +43,12 @@ type HeadsUpServerController struct {
 
 	apiServerName   model.APIServerName
 	webListener     WebListener
+	gatewayListener GatewayListener
 	hudServer       *HeadsUpServer
 	assetServer     assets.Server
 	apiServer       *http.Server
 	webServer       *http.Server
+	gatewayServer   *http.Server
 	webURL          model.WebURL
 	apiServerConfig *APIServerConfig
 
@@ -57,6 +59,7 @@ func ProvideHeadsUpServerController(
 	configAccess clientcmd.ConfigAccess,
 	apiServerName model.APIServerName,
 	webListener WebListener,
+	gatewayListener GatewayListener,
 	apiServerConfig *APIServerConfig,
 	hudServer *HeadsUpServer,
 	assetServer assets.Server,
@@ -69,6 +72,7 @@ func ProvideHeadsUpServerController(
 		configAccess:    configAccess,
 		apiServerName:   apiServerName,
 		webListener:     webListener,
+		gatewayListener: gatewayListener,
 		hudServer:       hudServer,
 		assetServer:     assetServer,
 		webURL:          webURL,
@@ -86,6 +90,9 @@ func (s *HeadsUpServerController) TearDown(ctx context.Context) {
 	// reason to handle graceful shutdown.
 	_ = s.webServer.Close()
 	_ = s.apiServer.Close()
+	if s.gatewayServer != nil {
+		_ = s.gatewayServer.Close()
+	}
 
 	_ = s.removeFromAPIServerConfig()
 }
@@ -172,6 +179,19 @@ func (s *HeadsUpServerController) setUpHelper(ctx context.Context, st store.RSto
 		ErrorLog: log.New(io.Discard, "", 0),
 	}
 	runServer(ctx, s.webServer, s.webListener)
+	if s.gatewayListener != nil {
+		// The opt-in gateway port (--gateway-port) serves the exact same
+		// handler as the main listener: the worktree gateway routes
+		// (<wt>.tilt.localhost), the HUD UI, and the token middleware.
+		s.gatewayServer = &http.Server{
+			Addr:    s.gatewayListener.Addr().String(),
+			Handler: webRouter,
+
+			// blackhole any server errors
+			ErrorLog: log.New(io.Discard, "", 0),
+		}
+		runServer(ctx, s.gatewayServer, s.gatewayListener)
+	}
 
 	s.apiServer = &http.Server{
 		Addr:           serving.Listener.Addr().String(),

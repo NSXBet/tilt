@@ -5,26 +5,31 @@
 #   tilt up --worktrees
 #
 # Tilt executes this file once for the main checkout and once for every
-# .worktree/<name>/Tiltfile checkout. `worktree.name()` is empty for main.
+# .worktree/<name>/Tiltfile checkout. There is no branching: every resource
+# declares its scope, and each run instantiates only what its scope names.
 
 worktree_config(port_range=(30000, 30100))
 
-WT = worktree.name()
+# Foundation — instantiated once, in the main run only. Every worktree
+# inherits it through dep resolution and never re-runs it.
+local_resource(
+    "shared-api",
+    cmd="true",
+    serve_cmd="./serve.sh shared 10370",
+    serve_port=10370,
+    scope="main",
+    links=["http://localhost:10370"],
+)
 
-if WT == "":
-    # This foundation runs exactly once and is shared by every worktree.
-    local_resource(
-        "shared-api",
-        cmd="true",
-        serve_cmd=["./serve.sh", "shared", "10370"],
-        links=["http://localhost:10370"],
-    )
-else:
-    # Each checkout gets its own branch-local resource and authored port.
-    ports = {"feature-a": 10371, "feature-b": 10372}
-    local_resource(
-        "app-" + WT,
-        cmd="true",
-        serve_cmd=["./serve.sh", WT, str(ports[WT])],
-        links=["http://localhost:%d" % ports[WT]],
-    )
+# Branch-local — instantiated once per worktree, never in the main run.
+# serve_port is a request: the port registry deconflicts it per worktree
+# and injects the allocated port as $TILT_SERVE_PORT. Links are derived
+# from the allocated port, including the <worktree>.tilt.localhost
+# gateway URL.
+local_resource(
+    "app",
+    cmd="true",
+    serve_cmd="./serve.sh %s $TILT_SERVE_PORT" % worktree.name(),
+    serve_port=30001,
+    scope="worktree",
+)

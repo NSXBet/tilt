@@ -564,7 +564,9 @@ func (r *Reconciler) applyWorktreeBoundary(
 		}
 		rewritten := make([]model.ManifestName, 0, len(tlr.EnabledManifests))
 		for _, m := range tlr.Manifests {
-			base, _ := worktree.SplitName(m.Name)
+			// SplitName returns (worktree, base): match the BASE name — the
+			// loader computed the enabled set from authored (bare) names.
+			_, base := worktree.SplitName(m.Name)
 			if enabled[base] {
 				rewritten = append(rewritten, m.Name)
 			}

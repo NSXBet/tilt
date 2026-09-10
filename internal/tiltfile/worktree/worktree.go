@@ -2,6 +2,9 @@ package worktree
 
 import (
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"go.starlark.net/starlark"
 
@@ -10,7 +13,7 @@ import (
 )
 
 // The worktree starlark module: worktree.name(), worktree.dir(),
-// worktree.shared(), worktree_config().
+// worktree.branch(), worktree.eq(), worktree.shared(), worktree_config().
 //
 // The same root Tiltfile is re-executed per worktree with a worktree context
 // injected through this plugin's construction (plan §0: the engine's
@@ -75,6 +78,14 @@ func (p Plugin) OnStart(env *starkit.Environment) error {
 	if err != nil {
 		return err
 	}
+	err = env.AddBuiltin("worktree.branch", p.worktreeBranch)
+	if err != nil {
+		return err
+	}
+	err = env.AddBuiltin("worktree.eq", p.worktreeEq)
+	if err != nil {
+		return err
+	}
 	return env.AddBuiltin("worktree_config", worktreeConfig)
 }
 
@@ -124,6 +135,66 @@ func (p Plugin) worktreeDir(t *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 	return starlark.String(p.dir), nil
+}
+
+// worktree.branch(): the git branch checked out in the checkout this run
+// executes for ("" on a detached HEAD). The main run resolves the main
+// checkout from the executing Tiltfile's position; a worktree run resolves
+// the injected worktree dir. A checkout outside git errors: a Tiltfile
+// branching on branches cannot run there silently.
+func (p Plugin) worktreeBranch(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	err := starkit.UnpackArgs(t, fn.Name(), args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	branch, err := p.branchOf(t)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %v", fn.Name(), err)
+	}
+	return starlark.String(branch), nil
+}
+
+// worktree.eq(branch): true when the checkout this run executes for has
+// `branch` checked out — the branch-based form of branching on
+// worktree.name() for worktrees that mirror their branch names. The main
+// run compares the MAIN checkout's branch, so `worktree.eq("main")` is the
+// shared-foundation test. Same failure behavior as worktree.branch(): a
+// checkout outside git errors; a detached HEAD matches only "".
+func (p Plugin) worktreeEq(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var branch string
+	err := starkit.UnpackArgs(t, fn.Name(), args, kwargs, "branch", &branch)
+	if err != nil {
+		return nil, err
+	}
+	current, err := p.branchOf(t)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %v", fn.Name(), err)
+	}
+	return starlark.Bool(current == branch), nil
+}
+
+// branchOf resolves the git branch of the checkout this run executes for:
+// the injected worktree dir, or the executing Tiltfile's directory for the
+// main run (its position is the main checkout).
+func (p Plugin) branchOf(t *starlark.Thread) (string, error) {
+	dir := p.dir
+	if dir == "" {
+		dir = filepath.Dir(starkit.CurrentExecPath(t))
+	}
+	return gitBranch(dir)
+}
+
+// gitBranch returns the branch checked out in dir via
+// `git branch --show-current` ("" on a detached HEAD). It shells out to
+// porcelain instead of reading HEAD: a linked worktree's HEAD lives in the
+// repo's worktrees/ metadata, and the porcelain contract is stable.
+func gitBranch(dir string) (string, error) {
+	out, err := exec.Command("git", "-C", dir, "branch", "--show-current").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolving the checked-out branch of %q: %v: %s",
+			dir, err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // worktree.shared(name): true when `name` is defined by the main run —

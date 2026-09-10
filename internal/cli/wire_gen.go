@@ -228,6 +228,11 @@ func wireCmdUp(ctx context.Context, analytics3 *analytics.TiltAnalytics, cmdTags
 	if err != nil {
 		return CmdUpDeps{}, err
 	}
+	gatewayPort := provideGatewayPort()
+	gatewayListener, err := server.ProvideGatewayListener(webHost, gatewayPort)
+	if err != nil {
+		return CmdUpDeps{}, err
+	}
 	tiltBuild := provideTiltInfo()
 	connProvider := server.ProvideDefaultConnProvider()
 	bearerToken, err := server.NewBearerToken()
@@ -266,7 +271,7 @@ func wireCmdUp(ctx context.Context, analytics3 *analytics.TiltAnalytics, cmdTags
 	if err != nil {
 		return CmdUpDeps{}, err
 	}
-	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, v, headsUpServer, assetsServer, webURL)
+	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, gatewayListener, v, headsUpServer, assetsServer, webURL)
 	scheme := v1alpha1.NewScheme()
 	uncachedObjects := controllers.ProvideUncachedObjects()
 	tiltServerControllerManager, err := controllers.NewTiltServerControllerManager(v, scheme, deferredClient, uncachedObjects)
@@ -455,6 +460,11 @@ func wireCmdCI(ctx context.Context, analytics3 *analytics.TiltAnalytics, subcomm
 	if err != nil {
 		return CmdCIDeps{}, err
 	}
+	gatewayPort := provideGatewayPort()
+	gatewayListener, err := server.ProvideGatewayListener(webHost, gatewayPort)
+	if err != nil {
+		return CmdCIDeps{}, err
+	}
 	tiltBuild := provideTiltInfo()
 	connProvider := server.ProvideDefaultConnProvider()
 	bearerToken, err := server.NewBearerToken()
@@ -493,7 +503,7 @@ func wireCmdCI(ctx context.Context, analytics3 *analytics.TiltAnalytics, subcomm
 	if err != nil {
 		return CmdCIDeps{}, err
 	}
-	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, v, headsUpServer, assetsServer, webURL)
+	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, gatewayListener, v, headsUpServer, assetsServer, webURL)
 	scheme := v1alpha1.NewScheme()
 	uncachedObjects := controllers.ProvideUncachedObjects()
 	tiltServerControllerManager, err := controllers.NewTiltServerControllerManager(v, scheme, deferredClient, uncachedObjects)
@@ -678,6 +688,11 @@ func wireCmdUpdog(ctx context.Context, analytics3 *analytics.TiltAnalytics, cmdT
 	if err != nil {
 		return CmdUpdogDeps{}, err
 	}
+	gatewayPort := provideGatewayPort()
+	gatewayListener, err := server.ProvideGatewayListener(webHost, gatewayPort)
+	if err != nil {
+		return CmdUpdogDeps{}, err
+	}
 	tiltBuild := provideTiltInfo()
 	connProvider := server.ProvideDefaultConnProvider()
 	bearerToken, err := server.NewBearerToken()
@@ -716,7 +731,7 @@ func wireCmdUpdog(ctx context.Context, analytics3 *analytics.TiltAnalytics, cmdT
 	if err != nil {
 		return CmdUpdogDeps{}, err
 	}
-	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, v, headsUpServer, assetsServer, webURL)
+	headsUpServerController := server.ProvideHeadsUpServerController(configAccess, apiServerName, webListener, gatewayListener, v, headsUpServer, assetsServer, webURL)
 	scheme := v1alpha1.NewScheme()
 	uncachedObjects := controllers.ProvideUncachedObjects()
 	tiltServerControllerManager, err := controllers.NewTiltServerControllerManager(v, scheme, deferredClient, uncachedObjects)
@@ -1172,6 +1187,7 @@ var BaseWireSet = wire.NewSet(
 	provideWebMode,
 	provideWebURL,
 	provideWebPort,
+	provideGatewayPort,
 	provideWebHost, server.WireSet, client.WireSet, provideStdout, server.ProvideDefaultConnProvider, provideAssetServer, tracer.NewSpanCollector, wire.Bind(new(trace.SpanExporter), new(*tracer.SpanCollector)), wire.Bind(new(tracer.SpanSource), new(*tracer.SpanCollector)), dirs.UseTiltDevDir, xdg.NewTiltDevBase, token.GetOrCreateToken, build.NewKINDLoader, wire.Value(feature.MainDefaults),
 )
 

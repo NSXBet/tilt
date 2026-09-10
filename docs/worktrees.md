@@ -13,17 +13,28 @@ the flag Tilt behaves exactly as upstream.
 
 ## Enabling worktrees
 
-1. Flag your shared (main-run) services so only what a branch actually
-   changes gets cloned, and branch the Tiltfile on the worktree name:
+1. Declare each resource's scope. The SAME root Tiltfile executes once for
+   the main checkout and once for every worktree; `scope` says which run
+   instantiates what, so the Tiltfile needs no branching:
 
    ```python
-   WT = worktree.name()   # "" in the main run, "feat-auth" in a worktree run
+   # foundation: instantiated once, in the main run only — every worktree
+   # inherits it through dep resolution and never re-runs it
+   local_resource("admin-bff-image", cmd="docker pull ...@sha256:...", scope="main")
 
-   if WT == "":
-       # foundation: evaluated once, shared by every worktree
+   # branch-local: instantiated once per worktree, never in the main run;
+   # the port registry deconflicts serve_port per worktree and always
+   # injects the allocated port as $TILT_SERVE_PORT (the serve process
+   # binds the env var, never the authored request)
+   local_resource("app",
+                  serve_cmd="./serve.sh %s $TILT_SERVE_PORT" % worktree.name(),
+                  serve_port=8080, scope="worktree")
+
+   # YAML/helm/shared-infra declarations have no resource identity to
+   # scope on, so those blocks still branch on the run context:
+   if worktree.name() == "":
        k8s_yaml(dedupe_env(helm("local", name="incidents", values=["local/values.yaml"])))
        k8s_yaml("local/infra.yaml")           # postgres + friends
-       local_resource("admin-bff-image", cmd="docker pull ...@sha256:...")
        k8s_resource("postgres", port_forwards=["5433:5432"])
        k8s_resource("admin-bff", port_forwards=["8080"])
    else:
@@ -75,7 +86,16 @@ Per-run behavior you get for free:
   its own authored port (they run in parallel); the port registry
   deconflicts `port_forward=0` forwards and docker-compose published
   ports per worktree. Configure a pool with
-  `worktree_config(port_range=(30000, 31000))`.
+  `worktree_config(port_range=(30000, 31000))`. The registry honors a
+  free in-pool `serve_port` request; when the request is taken or
+  out-of-pool, it hands out the next free pool port. Which worktree
+  keeps a contested request depends on load order — the mapping from
+  ports to checkouts is stable within a session but not across runs.
+  For worktree runs the allocated port is always injected as
+  `$TILT_SERVE_PORT` (even when the request is honored — the authored
+  value is only a request; the serve process binds the env var, string
+  or array `serve_cmd` alike). Keep the pool disjoint from main-run
+  authored ports: the registry deconflicts only what it allocates.
 - **Images**: each worktree builds its own tags
   (`api:api-<digest>-wt-<name>`) with its own build-cache lineage; a
   worktree never reuses main's stale image or vice versa.
@@ -85,6 +105,37 @@ Per-run behavior you get for free:
   links stay in the UI as the fallback for corporate proxies that
   intercept `*.localhost`.
 - **UI**: the web UI and TUI group resources by worktree.
+
+## Gateway without a port
+
+`*.localhost` URLs still carry a port number — `<worktree>.tilt.localhost:<port>`
+— because the gateway rides on Tilt's main HTTP listener. `--gateway-port`
+adds a dedicated listener so the same URLs work without one
+(`http://fix-ui.tilt.localhost`), which is what bare-hostname links, OAuth
+redirects, and some tooling expect:
+
+```sh
+tilt up --gateway-port 80   # plain HTTP on the privileged port
+```
+
+The extra listener serves exactly what the main HUD port serves — the
+gateway host-routing, the web UI, and the same token auth — so opting in
+changes nothing about the security posture.
+
+Ports below 1024 are privileged. Tilt never requires sudo: on a permission
+error it asks once to run a one-shot bind helper (`tilt gateway-bind`,
+hidden) under `sudo`, which opens the socket, passes the file descriptor
+back to the unprivileged Tilt process (SCM_RIGHTS), and exits. Nothing
+keeps running as root; every request is served by Tilt itself. Declining
+the prompt — or running without a terminal (CI, scripts) — leaves the
+gateway port off and `tilt up` continues unaffected. Port-in-use and other
+ordinary bind failures are fatal, so a typo'd `--gateway-port` cannot
+silently no-op.
+
+The listener belongs to this Tilt process and dies with it. Tilt
+deliberately does not install root services of its own; for boot
+persistence across Tilt restarts, run Tilt under a service manager that
+owns the privileged socket and passes it down.
 
 ## The hardcoded `-n` namespace flag caveat
 
@@ -133,15 +184,45 @@ one-line adoption goal) or hides cross-namespace DNS behind alias hacks.
 Same-namespace clones keep chart-internal DNS, Secrets, and ConfigMaps
 working untouched — only the flagged workload's pods move.
 
-## The `worktree.name()` adoption pattern
+## Scoping resources: `local_resource(scope=)`
 
-`worktree.name()` is the single line of worktree awareness:
+Resources declare where they instantiate; the loader enforces it. No
+branching:
+
+```python
+local_resource("admin-bff-image", cmd="docker pull ...@sha256:...", scope="main")
+local_resource("app", serve_cmd="./serve.sh $TILT_SERVE_PORT", serve_port=8080,
+               scope="worktree")
+```
+
+| `scope=` | main run | worktree runs |
+|----------|----------|---------------|
+| `"main"` | instantiated | dropped |
+| `"worktree"` | dropped | instantiated (engine-prefixed clone, worktree cwd, registry serve port) |
+| `"all"` (default) | instantiated | instantiated (worktree runs get the clone treatment) |
+
+A scoped resource is dropped — not re-defined — in the runs its scope does
+not name, so shared resources keep main's authored shape (ports included)
+and never trigger the shared-double-define error below.
+
+## The `worktree.name()` escape hatch
+
+`worktree.name()` (plus the branch helpers) is the single line of worktree
+awareness for everything `scope=` cannot express (YAML/helm blocks,
+worktree-aware scripts):
 
 | call | main run | worktree run |
 |------|----------|--------------|
 | `worktree.name()` | `""` | `"feat-auth"` |
 | `worktree.dir()` | `""` | the checkout dir (absolute) |
 | `worktree.shared("postgres")` | `False` | `True` when `postgres` is defined by the main run |
+| `worktree.branch()` | main checkout's branch | the worktree checkout's branch (`""` on a detached HEAD) |
+| `worktree.eq("feat-auth")` | main checkout's branch == the arg | the worktree checkout's branch == the arg |
+
+Both branch helpers resolve git (`git branch --show-current`) in the checkout
+the run executes for: the injected worktree dir, or the main Tiltfile's
+directory for the main run. A checkout outside any git repo is an error —
+if a Tiltfile branches on branches, "not a repo" cannot degrade to False.
 
 Branching on it converts an existing Tiltfile:
 
@@ -156,12 +237,29 @@ else:
     # automatically
 ```
 
+For checkouts whose directory name mirrors the branch (`git worktree add
+.worktree/feat-auth -b feat-auth`), `worktree.eq()` reads better than
+comparing names:
+
+```python
+if worktree.eq("main"):
+    # shared foundation, exactly once
+elif worktree.eq("release/2.3"):
+    # release-branch-only hotfix resources
+else:
+    # branch resources
+```
+
 Rules the loader enforces across runs:
 
 - A resource defined by BOTH main and a worktree run: the worktree's
-  definition wins (it flows through with its bare engine name).
+  definition wins (it flows through with its bare engine name). Prefer
+  `scope=` — a scoped resource is dropped instead of re-defined, which
+  keeps the shared shape authored in exactly one place.
+
 - The same resource name defined by TWO worktree runs: load error —
-  per-branch resources must be named per branch.
+  per-branch resources must be named per branch (or share one
+  `scope="worktree"` declaration).
 - Deps resolve same-worktree first, else main-defined; a dep on a
   resource defined only by a *different* worktree is a load error.
 - A main-defined resource depending on a worktree clone is a load error

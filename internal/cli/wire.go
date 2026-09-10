@@ -147,6 +147,7 @@ var BaseWireSet = wire.NewSet(
 	provideWebMode,
 	provideWebURL,
 	provideWebPort,
+	provideGatewayPort,
 	provideWebHost,
 	server.WireSet,
 	hudclient.WireSet,

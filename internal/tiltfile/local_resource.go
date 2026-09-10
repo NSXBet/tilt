@@ -33,6 +33,42 @@ func wtLocalResourcePortOwner(worktree, resourceName string) string {
 	return fmt.Sprintf("lr:%s/%s", worktree, resourceName)
 }
 
+// Scope values for local_resource(scope=): where the resource instantiates
+// across the main and worktree runs of a multi-worktree session (plan §3).
+// The Tiltfile executes once per run; scope replaces branching on
+// worktree.name() for resource declarations.
+const (
+	ScopeAll      = "all"      // default: every run defines it (classic behavior)
+	ScopeMain     = "main"     // instantiated only in the main run; worktree runs drop it
+	ScopeWorktree = "worktree" // instantiated only in worktree runs; the main run drops it
+)
+
+// parseLocalResourceScope validates the authored scope value. Empty means
+// the default (ScopeAll).
+func parseLocalResourceScope(fnName, v string) (string, error) {
+	switch v {
+	case "":
+		return ScopeAll, nil
+	case ScopeAll, ScopeMain, ScopeWorktree:
+		return v, nil
+	default:
+		return "", fmt.Errorf("%s: scope must be one of \"main\", \"worktree\", \"all\"; is %q", fnName, v)
+	}
+}
+
+// scopeInstantiates reports whether a resource with the given scope is
+// instantiated by the run executing for `worktree` ("" for the main run).
+func scopeInstantiates(scope, worktree string) bool {
+	switch scope {
+	case ScopeMain:
+		return worktree == ""
+	case ScopeWorktree:
+		return worktree != ""
+	default:
+		return true
+	}
+}
+
 type localResource struct {
 	name      string
 	updateCmd model.Cmd
@@ -63,6 +99,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 	var readinessProbe probe.Probe
 	var updateCmdDirVal, serveCmdDirVal starlark.Value
 	var servePortVal value.Int32
+	var scopeVal value.Stringable
 
 	deps := value.NewLocalPathListUnpacker(thread)
 
@@ -98,6 +135,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		"dir?", &updateCmdDirVal,
 		"serve_dir?", &serveCmdDirVal,
 		"serve_port?", &servePortVal,
+		"scope?", &scopeVal,
 	); err != nil {
 		return nil, err
 	}
@@ -146,6 +184,25 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 	if probeSpec != nil && serveCmd.Empty() {
 		s.logger.Warnf("Ignoring readiness probe for local resource %q (no serve_cmd was defined)", name)
 		probeSpec = nil
+	}
+
+	// Scope declaration (plan §3): a resource instantiates only in the runs
+	// its scope names. Branch-local resources never exist in the main run,
+	// and main-owned resources are never re-instantiated by worktree runs —
+	// the Tiltfile stays branch-free. Validated before the drop so a
+	// malformed call errors identically in every run.
+	scope, err := parseLocalResourceScope(fn.Name(), scopeVal.Value)
+	if err != nil {
+		return nil, err
+	}
+	if !scopeInstantiates(scope, s.worktree) {
+		run := "main"
+		if s.worktree != "" {
+			run = "worktree " + s.worktree
+		}
+		logger.Get(s.ctx).Verbosef("local_resource %q: scope %q does not instantiate in the %s run; skipped",
+			name, scope, run)
+		return starlark.None, nil
 	}
 
 	res := &localResource{

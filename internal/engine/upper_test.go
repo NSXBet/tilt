@@ -3283,7 +3283,7 @@ func newTestFixture(t *testing.T, options ...fixtureOptions) *testFixture {
 	webListener, err := server.ProvideWebListener("localhost", 0)
 	require.NoError(t, err)
 	hudsc := server.ProvideHeadsUpServerController(
-		nil, "tilt-default", webListener, serverOptions,
+		nil, "tilt-default", webListener, nil, serverOptions,
 		&server.HeadsUpServer{}, assets.NewFakeServer(), model.WebURL{})
 	ns := k8s.Namespace("default")
 	rd := kubernetesdiscovery.NewContainerRestartDetector()

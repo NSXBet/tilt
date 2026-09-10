@@ -90,6 +90,7 @@ up-to-date in real-time. Think 'docker build && kubectl apply' or 'docker-compos
 	rootCmd.AddCommand(newAlphaCmd(streams))
 	rootCmd.AddCommand(newLspCmd())
 	rootCmd.AddCommand(newSnapshotCmd())
+	rootCmd.AddCommand(newGatewayBindCmd())
 
 	globalFlags := rootCmd.PersistentFlags()
 	globalFlags.BoolVarP(&debug, "debug", "d", false, "Enable debug logging")

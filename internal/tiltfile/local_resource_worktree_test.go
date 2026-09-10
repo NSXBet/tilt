@@ -128,8 +128,12 @@ func TestLocalResource_WorktreeServePortDeconflict(t *testing.T) {
 			defer releaseLRPorts(t, tc.worktree)
 
 			f := newFixture(t)
-			f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
-			f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+			// The pool must be declared in the Tiltfile (not poked via
+			// portregistry.SetPortRange): every load re-applies
+			// worktree_config's range, and a load without worktree_config
+			// resets the registry to OS-fallback mode AFTER translation.
+			f.file("Tiltfile", fmt.Sprintf(`worktree_config(port_range=(%d, %d))
+local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`, min, max))
 			f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
 			f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "keep"), "")
 
@@ -140,7 +144,6 @@ func TestLocalResource_WorktreeServePortDeconflict(t *testing.T) {
 			tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
 			require.NoError(t, tlr.Error)
 			require.Len(t, tlr.Manifests, 1)
-
 			lt := tlr.Manifests[0].LocalTarget()
 			if tc.worktree == "" {
 				assert.Equal(t, 8080, lt.ServePort, "main keeps the authored port")
@@ -162,7 +165,7 @@ func TestLocalResource_WorktreeServePortDeconflict(t *testing.T) {
 // distinct registry allocations, and a same-worktree reload hands back the
 // same port (sticky contract — plan §5).
 func TestLocalResource_TwoWorktreesNoServePortClash(t *testing.T) {
-	wtPortRangeFor(t, "lrwt")
+	min, max := wtPortRangeFor(t, "lrwt")
 	releaseLRPorts(t, "feat-auth", "fix-bug")
 
 	load := func(t *testing.T, f *fixture, wtName string, prev *TiltfileLoadResult) model.Manifest {
@@ -175,7 +178,14 @@ func TestLocalResource_TwoWorktreesNoServePortClash(t *testing.T) {
 
 	newWtFixture := func(t *testing.T) *fixture {
 		f := newFixture(t)
-		f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
+		// The pool must be declared in the Tiltfile (not poked via
+		// portregistry.SetPortRange): every load re-applies worktree_config's
+		// range, and a load without worktree_config resets the registry to
+		// OS-fallback mode AFTER translation — so a second load in the same
+		// test would otherwise pick with no range and honor the out-of-pool
+		// request.
+		f.file("Tiltfile", fmt.Sprintf(`worktree_config(port_range=(%d, %d))
+local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`, min, max))
 		f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
 		f.file(filepath.Join(worktree.DefaultDir, "fix-bug", "keep"), "")
 		return f
@@ -201,12 +211,19 @@ func TestLocalResource_TwoWorktreesNoServePortClash(t *testing.T) {
 // serve_port= without a registry conflict: the allocation honors the
 // requested port when it is free (portregistry contract), so a single
 // worktree still serves what it asked for when nothing else holds it.
+// The request here is IN-POOL and free — allocated == requested — and the
+// env var must STILL be injected: the authored serve_port is only a
+// request, the serve process binds $TILT_SERVE_PORT (regression: the var
+// was previously injected only when the allocation changed the port, so
+// the literal $TILT_SERVE_PORT reached the shell whenever the request was
+// honored).
 func TestLocalResource_WorktreeServePortRequestedFree(t *testing.T) {
 	min, max := wtPortRangeFor(t, "lrfree")
 	releaseLRPorts(t, "feat-auth")
-
 	f := newFixture(t)
-	f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py", serve_port=8080)`)
+
+	f.file("Tiltfile", fmt.Sprintf(`worktree_config(port_range=(%d, %d))
+local_resource("web", "echo update", serve_cmd="python main.py", serve_port=%d)`, min, max, min))
 	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
 
 	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
@@ -214,8 +231,10 @@ func TestLocalResource_WorktreeServePortRequestedFree(t *testing.T) {
 	require.NoError(t, tlr.Error)
 
 	lt := tlr.Manifests[0].LocalTarget()
-	require.GreaterOrEqual(t, lt.ServePort, min)
-	require.LessOrEqual(t, lt.ServePort, max)
+	require.Equal(t, min, lt.ServePort, "free in-pool request must be honored")
+	require.Less(t, lt.ServePort, max)
+	require.Contains(t, lt.ServeCmd.Env, fmt.Sprintf("%s=%d", ServePortEnvVar, min),
+		"$TILT_SERVE_PORT must be injected even when the request is honored")
 }
 
 // A serve_resource without serve_port= (or without serve_cmd) is untouched
@@ -228,7 +247,6 @@ func TestLocalResource_WorktreeNoServePortUnchanged(t *testing.T) {
 	f := newFixture(t)
 	f.file("Tiltfile", `local_resource("web", "echo update", serve_cmd="python main.py")`)
 	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
-	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
 
 	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
 	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
@@ -237,4 +255,68 @@ func TestLocalResource_WorktreeNoServePortUnchanged(t *testing.T) {
 	lt := tlr.Manifests[0].LocalTarget()
 	assert.Equal(t, 0, lt.ServePort)
 	assert.Empty(t, lt.ServeCmd.Env)
+}
+
+// Acceptance (declarative scoping, plan §3): local_resource(scope=) declares
+// where a resource instantiates across the main and worktree runs, replacing
+// branching on worktree.name() for resource declarations. A scope that does
+// not name the current run drops the resource from that run's load result —
+// silently, so the same Tiltfile text executes in every run.
+
+// scope="worktree": branch-local. The main run never sees the resource —
+// nothing to skip with an if, nothing to double-define at the boundary.
+func TestLocalResource_ScopeWorktreeDroppedInMain(t *testing.T) {
+	f := newFixture(t)
+	f.file("Tiltfile", `local_resource("app", "echo update", serve_cmd="python main.py", scope="worktree")`)
+	f.load()
+	require.Empty(t, f.loadResult.Manifests, "branch-local resource must not instantiate in the main run")
+}
+
+// scope="main": shared foundation. Worktree runs never re-instantiate it —
+// so Combine's shared-double-define error cannot fire across worktrees, and
+// main's authored shape (serve port included) stands untouched.
+func TestLocalResource_ScopeMainDroppedInWorktree(t *testing.T) {
+	f := newFixture(t)
+	f.file("Tiltfile", `local_resource("db", "echo update", serve_cmd="python main.py", serve_port=10070, scope="main")`)
+	f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+	tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+	require.NoError(t, tlr.Error)
+	require.Empty(t, tlr.Manifests, "main-scoped resource must not instantiate in a worktree run")
+}
+
+// The run a scope names instantiates the resource with its authored shape.
+// Loader-level names stay bare; the engine boundary prefixes clones
+// (worktree/prefix.go).
+func TestLocalResource_ScopeInstantiatesInNamedRun(t *testing.T) {
+	t.Run("main", func(t *testing.T) {
+		f := newFixture(t)
+		f.file("Tiltfile", `local_resource("db", "echo update", serve_cmd="python main.py", serve_port=10070, scope="main")`)
+		f.load()
+		require.Len(t, f.loadResult.Manifests, 1)
+		assert.Equal(t, "db", string(f.loadResult.Manifests[0].Name))
+		assert.Equal(t, 10070, f.loadResult.Manifests[0].LocalTarget().ServePort)
+	})
+	t.Run("worktree", func(t *testing.T) {
+		f := newFixture(t)
+		f.file("Tiltfile", `local_resource("app", "echo update", serve_cmd="python main.py", scope="worktree")`)
+		f.file(filepath.Join(worktree.DefaultDir, "feat-auth", "keep"), "")
+
+		tf := ctrltiltfile.WorktreeTiltfile("feat-auth", f.JoinPath("Tiltfile"), nil)
+		tlr := f.newTiltfileLoader().Load(f.ctx, tf, nil)
+		require.NoError(t, tlr.Error)
+		require.Len(t, tlr.Manifests, 1)
+		assert.Equal(t, "app", string(tlr.Manifests[0].Name))
+	})
+}
+
+// Unknown scope values error loudly in every run — typo protection — instead
+// of silently degrading to the default.
+func TestLocalResource_ScopeInvalid(t *testing.T) {
+	f := newFixture(t)
+	f.file("Tiltfile", `local_resource("app", "echo update", scope="wrktree")`)
+	tlr := f.newTiltfileLoader().Load(f.ctx, ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil), nil)
+	require.Error(t, tlr.Error)
+	assert.Contains(t, tlr.Error.Error(), `scope must be one of "main", "worktree", "all"`)
 }

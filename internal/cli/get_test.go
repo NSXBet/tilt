@@ -131,7 +131,7 @@ func newServerFixture(t *testing.T) *serverFixture {
 
 	cfgAccess := server.ProvideConfigAccess(dir)
 	hudsc := server.ProvideHeadsUpServerController(cfgAccess, model.ProvideAPIServerName(model.WebPort(webPort)),
-		webListener, cfg, hudServer, assets.NewFakeServer(), model.WebURL{})
+		webListener, nil, cfg, hudServer, assets.NewFakeServer(), model.WebURL{})
 	require.NoError(t, hudsc.SetUp(ctx, st))
 
 	t.Setenv("TILT_CONFIG", filepath.Join(f.Path(), "config"))

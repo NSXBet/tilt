@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -156,4 +157,104 @@ worktree_config(dir="", gateway=False)
 	s := MustState(model)
 	require.Equal(t, ".worktree", s.Dir)
 	require.False(t, s.Gateway)
+}
+
+// worktree.branch(): the checked-out git branch of the checkout this run
+// executes for. Shells out to real git — the branch contract is git's, not
+// something to fake.
+func TestWorktreeBranch_RealGitRepo(t *testing.T) {
+	root := initGitRepo(t)
+	require.NoError(t, writeFile(root, "Tiltfile", `
+print(worktree.branch())
+print(worktree.eq("main"))
+print(worktree.eq("feat-auth"))
+`))
+	runGit(t, root, "worktree", "add", join(DefaultDir, "feat-auth"), "-b", "feat-auth")
+	require.NoError(t, writeFile(root, join(DefaultDir, "feat-auth/Tiltfile"), `
+print(worktree.branch())
+print(worktree.eq("feat-auth"))
+print(worktree.eq("main"))
+`))
+
+	// The main run's branch resolves from the executing Tiltfile's position,
+	// so the fixture's Tiltfile must physically live in the repo: swap the
+	// fixture temp dir for a symlink to the repo root (ExecFile reads the
+	// root Tiltfile through it).
+	fMain := starkit.NewFixture(t, NewPlugin())
+	fMain.UseRealFS()
+	require.NoError(t, os.RemoveAll(fMain.Path()))
+	require.NoError(t, os.Symlink(root, fMain.Path()))
+	_, err := fMain.ExecFile("Tiltfile")
+	require.NoError(t, err)
+	require.Equal(t, "main\nTrue\nFalse\n", fMain.PrintOutput())
+
+	// The worktree run resolves the branch from the injected dir (a real git
+	// checkout), so its Tiltfile can come from the fixture's fake FS.
+	fWt := starkit.NewFixture(t, NewPlugin(WithWorktree("feat-auth", join(root, DefaultDir, "feat-auth"))))
+	fWt.File(join(DefaultDir, "feat-auth/Tiltfile"), `
+print(worktree.branch())
+print(worktree.eq("feat-auth"))
+print(worktree.eq("main"))
+`)
+	_, err = fWt.ExecFile(join(DefaultDir, "feat-auth/Tiltfile"))
+	require.NoError(t, err)
+	require.Equal(t, "feat-auth\nTrue\nFalse\n", fWt.PrintOutput())
+}
+
+// A detached-HEAD checkout has no branch: worktree.branch() is "" and
+// worktree.eq matches only "". The worktree-side effect of `git worktree
+// add --detach` is asserted in discover_test.go; here the MAIN checkout is
+// detached, the position the main run resolves.
+func TestWorktreeBranch_DetachedHead(t *testing.T) {
+	root := initGitRepo(t)
+	runGit(t, root, "checkout", "--detach", "HEAD")
+	require.NoError(t, writeFile(root, "Tiltfile", `
+print(worktree.branch())
+print(worktree.eq(""))
+print(worktree.eq("main"))
+`))
+
+	f := starkit.NewFixture(t, NewPlugin())
+	f.UseRealFS()
+	require.NoError(t, os.RemoveAll(f.Path()))
+	require.NoError(t, os.Symlink(root, f.Path()))
+	_, err := f.ExecFile("Tiltfile")
+	require.NoError(t, err)
+	require.Equal(t, "\nTrue\nFalse\n", f.PrintOutput())
+}
+
+// A checkout outside any git repo errors on both builtins: a Tiltfile
+// branching on branches cannot run there silently — with scope= covering
+// the no-branching case, an error beats a misleading False.
+func TestWorktreeBranch_OutsideGitErrors(t *testing.T) {
+	for _, expr := range []string{
+		`print(worktree.branch())`,
+		`print(worktree.eq("main"))`,
+	} {
+		f := starkit.NewFixture(t, NewPlugin())
+		f.UseRealFS()
+		f.File("Tiltfile", expr)
+		_, err := f.ExecFile("Tiltfile")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resolving the checked-out branch")
+		require.Contains(t, err.Error(), "not a git repository")
+	}
+}
+
+// worktree.eq takes exactly one positional branch argument.
+func TestWorktreeEq_RequiresBranch(t *testing.T) {
+	f := starkit.NewFixture(t, NewPlugin())
+	f.File("Tiltfile", `worktree.eq()`)
+	_, err := f.ExecFile("Tiltfile")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "worktree.eq: missing argument for branch")
+}
+
+// worktree.branch takes no arguments.
+func TestWorktreeBranch_RequiresNoArgs(t *testing.T) {
+	f := starkit.NewFixture(t, NewPlugin())
+	f.File("Tiltfile", `worktree.branch("main")`)
+	_, err := f.ExecFile("Tiltfile")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "worktree.branch: got 1 arguments, want at most 0")
 }

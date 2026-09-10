@@ -26,5 +26,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 PYEOF

@@ -967,6 +967,19 @@ func ManifestTargetEndpoints(mt *ManifestTarget) (endpoints []model.Link) {
 		return localResourceLinks
 	}
 
+	// Worktree-run local resources (fork, plan §6/§8): with no authored
+	// links, the clone's endpoint is its registry-allocated serve port —
+	// the gateway and the UI links are derived from it (the serve process
+	// binds $TILT_SERVE_PORT). Main-run local resources keep upstream
+	// behavior: no synthesized links.
+	if mt.Manifest.IsLocal() {
+		if wt := mt.Manifest.Labels[v1alpha1.LabelWorktree]; wt != "" {
+			if p := mt.Manifest.LocalTarget().ServePort; p != 0 {
+				endpoints = append(endpoints, model.MustNewLink(fmt.Sprintf("http://localhost:%d/", p), ""))
+			}
+		}
+	}
+
 	if mt.Manifest.IsDC() {
 		hostPorts := make(map[int32]bool)
 		publishedPorts := mt.Manifest.DockerComposeTarget().PublishedPorts()

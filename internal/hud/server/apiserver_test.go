@@ -238,7 +238,7 @@ func newAPIServerFixture(t testing.TB) *apiserverFixture {
 func (f *apiserverFixture) start() *HeadsUpServerController {
 	f.t.Helper()
 	hudsc := ProvideHeadsUpServerController(f.configAccess, "tilt-default",
-		f.webListener, f.serverConfig, &HeadsUpServer{}, assets.NewFakeServer(), f.webURL)
+		f.webListener, nil, f.serverConfig, &HeadsUpServer{}, assets.NewFakeServer(), f.webURL)
 	require.NoError(f.t, hudsc.SetUp(f.ctx, f.st))
 	f.t.Cleanup(func() {
 		hudsc.TearDown(f.ctx)

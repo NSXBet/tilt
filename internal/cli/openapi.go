@@ -106,7 +106,7 @@ func newHeadlessServer(ctx context.Context) (*headlessServer, error) {
 		return nil, err
 	}
 	hudsc := server.ProvideHeadsUpServerController(
-		nil, "tilt-headless", webListener, serverOptions,
+		nil, "tilt-headless", webListener, nil, serverOptions,
 		&server.HeadsUpServer{}, assets.NewFakeServer(), model.WebURL{})
 	st := store.NewTestingStore()
 	err = hudsc.SetUp(ctx, st)

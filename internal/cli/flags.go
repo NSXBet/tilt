@@ -22,6 +22,7 @@ var (
 	defaultLogSource     = "all"
 	webHostFlag          = ""
 	webPortFlag          = 0
+	gatewayPortFlag      = 0
 	snapshotViewPortFlag = 0
 	namespaceOverride    = ""
 	portForwardsFlag     = true
@@ -65,6 +66,7 @@ func addConnectServerFlags(cmd *cobra.Command) {
 // For commands that start a web server.
 func addStartServerFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&webPortFlag, "port", defaultWebPort, "Port for the Tilt HTTP server. Set to 0 to disable. Overrides TILT_PORT env variable.")
+	cmd.Flags().IntVar(&gatewayPortFlag, "gateway-port", 0, "Extra port serving the Tilt web UI and the worktree gateway (<branch>.tilt.localhost URLs). Binding a privileged port (below 1024) prompts once for sudo; declining leaves the gateway off. Default: disabled.")
 	cmd.Flags().StringVar(&webHostFlag, "host", defaultWebHost, "Host for the Tilt HTTP server and default host for any port-forwards. Defaults to localhost; only change this if you need remote access and understand the security implications. Overrides TILT_HOST env variable.")
 	cmd.Flags().BoolVar(&portForwardsFlag, "port-forwards", true, "Enable Kubernetes port-forwards to the local machine. Use --port-forwards=false to disable all port-forwards.")
 }

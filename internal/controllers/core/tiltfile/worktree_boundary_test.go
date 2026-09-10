@@ -61,6 +61,45 @@ func TestReconciler_WorktreeBoundaryRewrite(t *testing.T) {
 	require.Equal(t, model.ManifestName("tiltfile:feat-auth"), m.SourceTiltfile)
 }
 
+// The boundary rewrite must remap EnabledManifests to the clone names by
+// BASE name (SplitName's second return), not the worktree name: a clone
+// whose authored resource name differs from its worktree name (e.g. "app"
+// in worktree "feat-auth") would otherwise lose its enabled entry, and its
+// disable ConfigMap would say isDisabled=true — the serve cmd never starts.
+func TestReconciler_WorktreeBoundaryKeepsCloneEnabled(t *testing.T) {
+	f := newFixture(t)
+	p := f.tempdir.JoinPath("Tiltfile")
+
+	f.r.runs[types.NamespacedName{Name: model.MainTiltfileManifestName.String()}] = &runStatus{
+		step: runStepDone,
+		tlr: &tiltfile.TiltfileLoadResult{
+			Manifests: []model.Manifest{manifestbuilder.New(f.tempdir, "postgres").WithLocalServeCmd(".").Build()},
+		},
+	}
+
+	web := manifestbuilder.New(f.tempdir, "web").
+		WithLocalServeCmd(".").
+		WithResourceDeps("postgres").
+		Build()
+	f.tfl.Result = tiltfile.TiltfileLoadResult{
+		Manifests:        []model.Manifest{web},
+		EnabledManifests: []model.ManifestName{"web"},
+	}
+
+	tf := ctrltiltfile.WorktreeTiltfile("feat-auth", p, nil)
+	f.createAndWaitForLoaded(tf)
+
+	require.Equal(t, "", tf.Status.Terminated.Error)
+
+	a := f.st.WaitForAction(t, actionTypeConfigsReloaded()).(ConfigsReloadedAction)
+	require.NoError(t, a.Err)
+	require.Equal(t, 1, len(a.Manifests))
+	m := a.Manifests[0]
+	require.Equal(t, model.ManifestName("wt:feat-auth_web"), m.Name)
+
+	f.requireEnabled(m, true)
+}
+
 // Main run: no worktree label — no rewrite. Bare names preserved.
 func TestReconciler_MainRunUnchanged(t *testing.T) {
 	f := newFixture(t)

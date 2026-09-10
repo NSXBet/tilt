@@ -4,8 +4,9 @@
 # (.agents/drafts/multi-worktree-parallel.md §11: local_resource + shared
 # resources, no cluster).
 #
-# The SAME Tiltfile executes once per worktree (plan §3): worktree.name() is
-# "" in the main run and the worktree name in each re-execution. Run with:
+# The SAME Tiltfile executes once per run (plan §3) with no branching:
+# every resource declares its scope, and each run instantiates only what
+# its scope names. Run with:
 #
 #   tilt up --worktrees
 #
@@ -16,24 +17,30 @@
 # this root Tiltfile re-rooted at the checkout (plan §3 one-Tiltfile style;
 # worktree.dir() == the checkout).
 
-WT = worktree.name()
+worktree_config(port_range=(10071, 10080))
 
-if WT == "":
-    # ── main run: foundation ──
-    # The shared services every worktree inherits (incidents-admin's
-    # postgres/admin-bff-image layer). Defined ONCE here; worktree runs
-    # that do not redefine them just depend on them.
-    local_resource('shared-infra',
-                   cmd='true',
-                   serve_cmd=['./serve.sh', 'shared', '10070'],
-                   links=['http://localhost:10070'])
-else:
-    # ── worktree run: this branch's own server ──
-    # Each worktree serves on its OWN authored port: parallel servers, no
-    # deconfliction needed for this fixture (the port registry handles
-    # port_forward=0 and docker-compose published ports).
-    serve_ports = {'wt-a': 10071, 'wt-b': 10072}
-    local_resource(WT,
-                   cmd='true',
-                   serve_cmd=['./serve.sh', WT, str(serve_ports[WT])],
-                   links=['http://localhost:%d' % serve_ports[WT]])
+# ── shared foundation (incidents-admin's postgres/admin-bff-image layer) ──
+# Instantiated ONCE, in the main run only; worktree runs inherit it through
+# dep resolution and never re-run it. scope="main" replaces the classic
+# `if worktree.name() == ""` branch.
+local_resource('shared-infra',
+               cmd='true',
+               serve_cmd='./serve.sh shared 10070',
+               serve_port=10070,
+               scope='main',
+               links=['http://localhost:10070'])
+
+# ── branch-local server ──
+# One resource declaration for every worktree: instantiated once per
+# worktree run, never in the main run, and engine-prefixed to
+# wt:<worktree>_app at the boundary. serve_port is a request — the port
+# registry deconflicts it per worktree: whichever run's Tiltfile loads
+# first keeps 10071, the other gets the next free pool port. The
+# allocated port is always injected as $TILT_SERVE_PORT (even when the
+# request is honored — the authored value is only a request), and
+# serve_cmd is a string so the shell expands it.
+local_resource('app',
+               cmd='true',
+               serve_cmd='./serve.sh ' + worktree.name() + ' $TILT_SERVE_PORT',
+               serve_port=10071,
+               scope='worktree')

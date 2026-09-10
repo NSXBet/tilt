@@ -32,5 +32,5 @@ class H(http.server.BaseHTTPRequestHandler):
         pass  # keep the fixture logs quiet
 
 
-http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+http.server.ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
 PYEOF

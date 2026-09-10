@@ -9,6 +9,7 @@ import (
 var WireSet = wire.NewSet(
 	NewBearerToken,
 	ProvideWebListener,
+	ProvideGatewayListener,
 	ProvideAPIServerPort,
 	ProvideConfigAccess,
 	model.ProvideAPIServerName,

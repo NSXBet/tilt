@@ -1645,18 +1645,21 @@ func (s *tiltfileState) translateLocal() ([]model.Manifest, error) {
 		}
 
 		serveCmd := r.serveCmd
-		if servePort != 0 && servePort != r.servePort {
+		if servePort != 0 && s.worktree != "" {
 			// The serve process learns its deconflicted port through the
 			// environment: ServeCmd has no fixed-port channel (the port may
 			// not be known when the Tiltfile runs — OS-fallback allocation
 			// happens here), so the Tiltfile author writes
 			// `serve_cmd="python main.py --port $TILT_SERVE_PORT"` and the
-			// loader injects the value. Main runs with an explicit port need
-			// no injection (the process already knows the authored port).
+			// loader injects the value. Injected whenever a worktree run
+			// allocates through the registry — INCLUDING when the
+			// allocation honors the authored request — because the authored
+			// serve_port is only a request: the process must bind
+			// $TILT_SERVE_PORT, never assume it. Main runs keep the authored
+			// port untouched and need no injection.
 			serveCmd.Env = append(serveCmd.Env[:len(serveCmd.Env):len(serveCmd.Env)],
 				fmt.Sprintf("%s=%d", ServePortEnvVar, servePort))
 		}
-
 		paths := append([]string{}, r.deps...)
 		paths = append(paths, r.threadDir)
 
