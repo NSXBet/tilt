@@ -1,0 +1,24 @@
+# -*- mode: Python -*-
+#
+# Run from this directory:
+#
+#   tilt up
+#
+# Classic single-checkout Tilt: no --worktrees, no worktree_config(), and no
+# resource scopes. Each resource is instantiated once.
+
+local_resource(
+    "api",
+    cmd="true",
+    serve_cmd="./serve.sh api 10380",
+    links=["http://localhost:10380"],
+)
+
+# The web resource's first build waits for api to finish.
+local_resource(
+    "web",
+    cmd="true",
+    serve_cmd="./serve.sh web 10381",
+    resource_deps=["api"],
+    links=["http://localhost:10381"],
+)
