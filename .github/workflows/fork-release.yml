@@ -1,0 +1,153 @@
+# fork: NSXBet release pipeline — mirror upstream; keep fork-specific changes in this file.
+#
+# - push to master        -> prerelease "tip" (nightly, moving tag)
+# - push tag v*           -> tagged release
+# - workflow_dispatch     -> same as a master push (manual nightly)
+#
+# Binaries are stamped and packaged exactly once per job; assets:
+#   tilt.<version>.mac.arm64.tar.gz / tilt.<version>.mac.x86_64.tar.gz
+#   tilt.<version>.linux.x86_64.tar.gz / tilt.<version>.linux.arm64.tar.gz
+#   checksums.txt
+#
+# This workflow intentionally does NOT touch NSXBet/homebrew-tap (no cross-repo
+# token). The tap self-updates via its own scheduled workflow that polls these
+# releases and regenerates formulas from checksums.txt — see the tap repo's
+# scripts/update-tilt-formulas.sh.
+
+name: Fork release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos runners are arm64; amd64 is cross-compiled with -arch x86_64
+          - { os: macos-latest, target: darwin }
+          - { os: ubuntu-latest, target: linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build web assets
+        run: |
+          corepack enable
+          make build-js
+
+      - name: Install cross toolchain
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Compute version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="tip-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp LICENSE dist/
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.builtBy=github-actions"
+
+          build() {
+            local goos="$1" goarch="$2" cc="$3" name="$4"
+            echo "::group::build ${name} (GOOS=${goos} GOARCH=${goarch})"
+            CGO_ENABLED=1 GOOS="$goos" GOARCH="$goarch" CC="$cc" \
+              go build -mod=vendor -tags=osusergo -trimpath -ldflags "$LDFLAGS" \
+              -o dist/tilt ./cmd/tilt
+            tar -czf "dist/${name}.tar.gz" -C dist tilt LICENSE
+            rm dist/tilt
+            echo "::endgroup::"
+          }
+
+          if [[ "$TARGET" == "darwin" ]]; then
+            build darwin arm64 "clang"              "tilt.${VERSION}.mac.arm64"
+            build darwin amd64 "clang -arch x86_64" "tilt.${VERSION}.mac.x86_64"
+          else
+            build linux amd64 "gcc"                  "tilt.${VERSION}.linux.x86_64"
+            build linux arm64 "aarch64-linux-gnu-gcc" "tilt.${VERSION}.linux.arm64"
+          fi
+
+          cd dist
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 *.tar.gz > checksums-${TARGET}.txt
+          else
+            sha256sum *.tar.gz > checksums-${TARGET}.txt
+          fi
+          cat checksums-${TARGET}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: Combine checksums
+        run: |
+          set -euo pipefail
+          cat dist/checksums-*.txt > dist/checksums.txt
+          rm dist/checksums-*.txt
+          cat dist/checksums.txt
+
+      - name: Publish GitHub release
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/checksums.txt \
+              --title "tilt $GITHUB_REF_NAME" \
+              --generate-notes
+          else
+            gh release delete tip --cleanup-tag --yes || true
+            sleep 5  # tag deletion is eventually consistent; avoid 422 on recreate
+            gh release create tip --target "$GITHUB_SHA" --prerelease \
+              --title "tip — nightly from master" \
+              --notes "Nightly build of master @ ${GITHUB_SHA::7}.
+          Install: \`brew install nsxbet/tap/tip\`"
+            gh release upload tip dist/*.tar.gz dist/checksums.txt
+          fi
