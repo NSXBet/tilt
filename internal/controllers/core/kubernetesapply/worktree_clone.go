@@ -173,15 +173,30 @@ func cloneService(svc *v1.Service, worktree string) *v1.Service {
 }
 
 // stampWorktreeClones returns the entities to apply for a worktree run: the
-// original entities (stable, untouched) plus one stamped clone per workload
-// and one clone per Service selecting a stamped workload.
+// clone set (plan §4.2) plus the shared, non-workload entities. Stable
+// workloads, Services and Ingresses are NOT applied by a worktree run: the
+// main run owns them, and re-applying them here would re-inject them with
+// THIS run's image (the run's ImageMaps are worktree-scoped, and the
+// stable-ref injection fallback matches the chart's stable repo) — rolling
+// the stable Deployment's image back / racing main's deploys. Live repro:
+// examples/worktrees-helm, the main `api` Deployment flipped to
+// wt-helm/api-wt-wt-b:... after a wt-b reload.
 func stampWorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity, error) {
 	clones, err := WorktreeClones(entities, worktree)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]k8s.K8sEntity, 0, len(entities)+len(clones))
-	out = append(out, entities...)
+	shared := make([]k8s.K8sEntity, 0, len(entities))
+	for _, e := range entities {
+		switch e.Obj.(type) {
+		case *appsv1.Deployment, *appsv1.StatefulSet, *v1.Service, *networkingv1.Ingress:
+			// Main-run-owned objects: the main run applies them.
+			continue
+		}
+		shared = append(shared, e)
+	}
+	out := make([]k8s.K8sEntity, 0, len(shared)+len(clones))
+	out = append(out, shared...)
 	out = append(out, clones...)
 	return out, nil
 }
@@ -245,12 +260,6 @@ func WorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity,
 		}
 	}
 
-	// Route clones (plan §4.2 step 4) + sibling DNS rewrite (step 3) run on
-	// the full stamped set (stable entities + clones): the clone-Service
-	// name set must be complete before any backend ref or container ref
-	// resolves, and the rewrites mutate entities in place — clones already
-	// in the accumulator, so both stampWorktreeClones and `tilt down` see
-	// the ingress clones and rewritten refs.
 	// Route clones (plan §4.2 step 4) + sibling DNS rewrite (step 3) run on
 	// the full stamped set (stable entities + clones): the clone-Service
 	// name set must be complete before any backend ref or container ref
@@ -403,97 +412,6 @@ func isDigits(s string) bool {
 		}
 	}
 	return true
-}
-
-// stampWorktreeClones returns the entities to apply for a worktree run: the
-// original entities (stable, untouched) plus one stamped clone per workload
-// and one clone per Service selecting a stamped workload.
-func stampWorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity, error) {
-	clones, err := WorktreeClones(entities, worktree)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]k8s.K8sEntity, 0, len(entities)+len(clones))
-	out = append(out, entities...)
-	out = append(out, clones...)
-	return out, nil
-}
-
-// WorktreeClones returns just the clone objects a worktree run applies
-// alongside `entities` (plan §4.2): one stamped clone per workload
-// (Deployment/StatefulSet) with a non-empty matchLabels selector, and one
-// clone per Service selecting such a workload. Shared objects (ConfigMaps,
-// Secrets, ...) never get clones.
-//
-// Exported for `tilt down` (plan §9.1): down recomputes the clone set from
-// the same entities the apply pass stamped, so it deletes exactly the
-// clones this Tiltfile created — without querying the cluster for
-// annotated objects, which would reach other Tilt processes' clones too.
-func WorktreeClones(entities []k8s.K8sEntity, worktree string) ([]k8s.K8sEntity, error) {
-	// Stable name -> workload matchLabels, for Service clone matching.
-	matchLabels := map[string]map[string]string{}
-	for _, e := range entities {
-		var m map[string]string
-		switch obj := e.Obj.(type) {
-		case *appsv1.Deployment:
-			m = obj.Spec.Selector.MatchLabels
-		case *appsv1.StatefulSet:
-			m = obj.Spec.Selector.MatchLabels
-		default:
-			continue
-		}
-		if len(m) > 0 {
-			matchLabels[e.Meta().GetName()] = m
-		}
-	}
-
-	cloneCount := len(matchLabels)
-	svcClones := make([]k8s.K8sEntity, 0, cloneCount)
-	if cloneCount > 0 {
-		for _, e := range entities {
-			svc, ok := e.Obj.(*v1.Service)
-			if !ok {
-				continue
-			}
-			for _, labels := range matchLabels {
-				if !workloadMatchesService(svc, labels) {
-					continue
-				}
-				clone := cloneService(svc, workloadSelector(labels, worktree), worktree)
-				svcClones = append(svcClones, k8s.NewK8sEntity(clone))
-				break
-			}
-		}
-	}
-
-	clones := make([]k8s.K8sEntity, 0, cloneCount+len(svcClones))
-	for _, e := range entities {
-		// N.B. match on KIND, not just name: chart-shaped YAML commonly gives
-		// the Service and the workload the same object name ("sancho"), so a
-		// name-keyed lookup would stamp the Service as a workload clone too.
-		if workloadNameOf(e) == "" {
-			continue
-		}
-		if _, ok := matchLabels[e.Meta().GetName()]; !ok {
-			continue
-		}
-		clone, err := stampWorkloadClone(e, worktree)
-		if err != nil {
-			return nil, err
-		}
-		clones = append(clones, clone)
-	}
-
-	stamped := make([]k8s.K8sEntity, 0, len(entities)+len(clones)+len(svcClones))
-	stamped = append(stamped, entities...)
-	stamped = append(stamped, clones...)
-	stamped = append(stamped, svcClones...)
-	suffix := worktreeCloneSuffix(worktree)
-	clonedServices := clonedServiceNames(stamped, suffix, worktree)
-	ingresses := cloneIngresses(stamped, suffix, worktree, clonedServices)
-	stamped = append(stamped, ingresses...)
-	rewriteSiblingRefs(stamped, worktree)
-	return append(append(clones, svcClones...), ingresses...), nil
 }
 
 // cloneIngress returns a copy of the Ingress with every Service backend

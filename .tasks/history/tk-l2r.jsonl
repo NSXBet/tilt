@@ -1,0 +1,2 @@
+{"issue_id":"tk-l2r","action":"save","at":"2026-09-19T07:07:24.787Z","actor":null,"data":{"status":"open","title":"Forwards + gateway serve the worktree namespace"}}
+{"issue_id":"tk-l2r","action":"dependency_added","at":"2026-09-19T07:07:47.793Z","actor":"yuri","data":{"target":"tk-sxa","type":"blocks"}}

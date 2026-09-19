@@ -1,0 +1,10 @@
+replicaCount: 1
+
+image:
+  # Tilt replaces the tag with the digest tag of the image it built for the
+  # current run (stable on the main run, -wt-<worktree> in worktree runs).
+  repository: wt-helm/api
+  tag: latest
+
+service:
+  port: 8080

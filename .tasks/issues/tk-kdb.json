@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-kdb",
+  "title": "Epic: worktree=True binary flag + namespace isolation",
+  "description": "Directive 2026-09-17: no wt-/wt: prefixes anywhere user-visible (complying with a naming scheme is not the user's responsibility); remove scope",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "epic",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-19T07:06:49.584Z",
+  "updated_at": "2026-09-19T07:07:45.785Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": null,
+  "sprint": null,
+  "labels": [],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "attachments": [
+    {
+      "path": ".agents/plans/2026-09-17_00-13-worktree-flag-namespace-isolation.md",
+      "metadata": {}
+    }
+  ],
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [],
+  "comment_count": 0
+}

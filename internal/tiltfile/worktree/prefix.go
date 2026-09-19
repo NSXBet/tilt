@@ -72,9 +72,16 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 				m.ResourceDependencies[i] = ManifestName(name, string(dep))
 			}
 		}
-		if wtOwned[m.Name] {
+		if wtOwned[m.Name] && !(m.IsK8s() || m.IsDC()) {
 			// The shared manifest itself, flowing through this run: keep the
-			// bare engine name and pin it as a dep of this run.
+			// bare engine name and pin it as a dep of this run. Shared
+			// redefinition (plan §3 "the worktree's definition wins") is the
+			// local_resource shared-hack model; k8s/DC manifests are excluded —
+			// a worktree run's k8s/DC workload is always ITS OWN instantiation
+			// (plan §4.1/§4.2 additive siblings): bare, it would collide with
+			// the main run's apiserver objects (KubernetesApply/DockerCompose
+			// CRs are keyed by manifest name) instead of clone-stamping into
+			// -wt-<worktree> siblings.
 			if !containsName(m.ResourceDependencies, m.Name) {
 				m.ResourceDependencies = append(m.ResourceDependencies, m.Name)
 			}

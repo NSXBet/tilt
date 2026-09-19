@@ -124,20 +124,29 @@ func TestApplyBoundary_ImageMapIdentityScoped(t *testing.T) {
 		"ImageMap identity must be worktree-scoped")
 }
 
-// Shared manifests flowing through the run keep the bare selector: they are
-// main's resources, not clones.
+// Shared LOCAL manifests flowing through the run keep the bare selector:
+// they are main's resources, not clones. k8s/DC same-name manifests are the
+// worktree's own clones (TestApplyBoundary_K8sSharedNameBecomesClone), so
+// only local shapes keep bare identity.
 func TestApplyBoundary_SharedImageMapStaysBare(t *testing.T) {
-	main := []model.Manifest{boundaryMd("postgres")}
+	shared := localMd("postgres")
+	iTarget := model.ImageTarget{}
+	iTarget.ImageMapSpec.Selector = "registry.example.com/postgres"
+	iTarget.LiveUpdateName = apis.SanitizeName("postgres:" + iTarget.ID().Name.String())
+	iTarget.DockerImageName = apis.SanitizeName("postgres:" + iTarget.ID().Name.String())
+	shared.ImageTargets = []model.ImageTarget{iTarget}
+
+	main := []model.Manifest{shared}
 	out, err := ApplyBoundary(main, RunResult{
 		Name:      "feat-auth",
-		Manifests: []model.Manifest{boundaryMd("postgres")},
+		Manifests: []model.Manifest{shared},
 	})
 	require.NoError(t, err)
 
 	m := out.Manifests[0]
 	require.Equal(t, model.ManifestName("postgres"), m.Name)
 	require.Equal(t, "registry.example.com/postgres", m.ImageTargets[0].ImageMapSpec.Selector,
-		"shared manifest's ImageMap selector stays bare")
+		"shared local manifest's ImageMap selector stays bare")
 }
 
 // Two worktrees building the same Dockerfile: distinct ImageMap identities
@@ -330,7 +339,10 @@ func multiStageMd(name string, baseRef string) model.Manifest {
 // untouched.
 func TestIntegration_TwoWorktreesSameDockerfileDistinctIdentity(t *testing.T) {
 	// Both worktrees re-execute the root Tiltfile: each defines "api" with
-	// the same docker_build ref, and a shared "postgres" flows through.
+	// the same docker_build ref, and a k8s "postgres" with the same shape.
+	// Both are k8s manifests, so under the additive-siblings contract
+	// (plan §4.1/§4.2) BOTH become each worktree's own clones; main's
+	// definitions stay untouched.
 	main := []model.Manifest{boundaryMd("postgres")}
 	outA, err := ApplyBoundary(main, RunResult{
 		Name: "feat-auth",
@@ -379,13 +391,17 @@ func TestIntegration_TwoWorktreesSameDockerfileDistinctIdentity(t *testing.T) {
 	require.NotEqual(t, taggedA.LocalRef.String(), taggedB.LocalRef.String(),
 		"two worktrees building the same Dockerfile must produce distinct tags")
 
-	// Main's (shared postgres) identity is untouched by both runs.
+	// The worktree runs' k8s postgres redefinition is ALSO each worktree's
+	// own clone (additive siblings), while main's postgres identity is
+	// untouched by both runs.
 	sharedA := outA.Manifests[1]
 	sharedB := outB.Manifests[1]
-	require.Equal(t, model.ManifestName("postgres"), sharedA.Name)
-	require.Equal(t, model.ManifestName("postgres"), sharedB.Name)
-	require.Equal(t, "registry.example.com/postgres", sharedA.ImageTargets[0].ImageMapSpec.Selector)
-	require.Equal(t, "registry.example.com/postgres", sharedB.ImageTargets[0].ImageMapSpec.Selector)
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), sharedA.Name)
+	require.Equal(t, model.ManifestName("wt:fix-ui_postgres"), sharedB.Name)
+	require.Equal(t, "registry.example.com/postgres", main[0].ImageTargets[0].ImageMapSpec.Selector,
+		"main's postgres identity stays bare")
+	require.Equal(t, "registry.example.com/postgres-wt-feat-auth", sharedA.ImageTargets[0].ImageMapSpec.Selector)
+	require.Equal(t, "registry.example.com/postgres-wt-fix-ui", sharedB.ImageTargets[0].ImageMapSpec.Selector)
 
 	// Clone deploy targets reference their own scoped ImageMap names.
 	require.Equal(t, []string{"registry.example.com_api-wt-feat-auth"}, outA.Manifests[0].K8sTarget().ImageMaps)

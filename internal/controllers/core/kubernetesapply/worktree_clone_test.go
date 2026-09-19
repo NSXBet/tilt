@@ -137,10 +137,12 @@ func TestWorktreeCloneStamping(t *testing.T) {
 	applied := f.kClient.Yaml
 	require.Contains(t, applied, "sancho-wt-feat-auth", "clone must be applied")
 
-	// Clones: both Deployments stamped, no matchLabels collision between
-	// clone and stable (plan §12).
+	// Ownership split: the worktree run applies ONLY clones (+ shared
+	// objects). Stable workloads/Services are main-run-owned — re-applying
+	// them here would inject this worktree's image into the stable
+	// Deployment (the run's ImageMaps are worktree-scoped).
 	clones := deployEntities(t, applied)
-	require.Len(t, clones, 4, "each workload appears as stable + clone")
+	require.Len(t, clones, 2, "only the workload clones are applied")
 	byName := map[string]*appsv1.Deployment{}
 	for _, d := range clones {
 		byName[d.Name] = d
@@ -157,34 +159,12 @@ func TestWorktreeCloneStamping(t *testing.T) {
 			"clone %s must carry the tilt.dev/worktree annotation", name)
 	}
 
-	// Stable untouched: bare names, no worktree annotation, selector without
-	// the worktree label — the stable Service keeps matching only the stable.
-	for _, name := range []string{"sancho", "sancho-sidecar"} {
-		stable, ok := byName[name]
-		require.True(t, ok, "stable %s must still be applied", name)
-		_, hasAnn := stable.Annotations["tilt.dev/worktree"]
-		assert.False(t, hasAnn, "stable %s must not be annotated", name)
-		_, hasWt := stable.Spec.Selector.MatchLabels["worktree"]
-		assert.False(t, hasWt, "stable %s selector must not gain the worktree label", name)
-	}
-
-	// Service clones: clone selector reaches ONLY worktree pods; stable
-	// selector unchanged.
+	// Service clones only; the stable Service is main-owned.
 	svcs := svcEntities(t, applied)
-	require.Len(t, svcs, 2, "stable Service + one clone Service")
-	svcByName := map[string]*v1.Service{}
-	for _, s := range svcs {
-		svcByName[s.Name] = s
-	}
-	cloneSvc, ok := svcByName["sancho-wt-feat-auth"]
-	require.True(t, ok, "missing clone Service")
-	assert.Equal(t, "feat-auth", cloneSvc.Spec.Selector["worktree"])
-	stableSvc, ok := svcByName["sancho"]
-	require.True(t, ok, "stable Service must still be applied")
-	assert.Equal(t, map[string]string{"app": "sancho"}, stableSvc.Spec.Selector,
-		"stable Service selector must be untouched")
+	require.Len(t, svcs, 1, "only the clone Service is applied")
+	assert.Equal(t, "feat-auth", svcs[0].Spec.Selector["worktree"])
 
-	// Shared objects never cloned.
+	// Shared objects are still applied by the worktree run.
 	assert.Contains(t, applied, "name: sancho-config")
 	assert.NotContains(t, applied, "sancho-config-wt-feat-auth")
 }
@@ -209,7 +189,7 @@ func TestWorktreeCloneStamping_ApplyCmdPath(t *testing.T) {
 	f.MustReconcile(types.NamespacedName{Name: "a"})
 
 	deployments := deployEntities(t, f.kClient.Yaml)
-	require.Len(t, deployments, 2, "stable + clone")
+	require.Len(t, deployments, 1, "only the clone (stable is main-run-owned)")
 	byName := map[string]*appsv1.Deployment{}
 	for _, d := range deployments {
 		byName[d.Name] = d
@@ -220,10 +200,9 @@ func TestWorktreeCloneStamping_ApplyCmdPath(t *testing.T) {
 	assert.Equal(t, "feat-auth", clone.Spec.Selector.MatchLabels["worktree"])
 	assert.Equal(t, "feat-auth", clone.Annotations["tilt.dev/worktree"])
 
-	stable, ok := byName["sancho"]
-	require.True(t, ok)
-	_, hasAnn := stable.Annotations["tilt.dev/worktree"]
-	assert.False(t, hasAnn)
+	// The stable workload is main-run-owned: not applied by the worktree run.
+	_, ok = byName["sancho"]
+	require.False(t, ok)
 }
 
 // Main run (Worktree == "") must be a no-op: classic behavior preserved.
@@ -546,7 +525,7 @@ spec:
 	for _, ing := range ingresses {
 		byName[ing.Name] = ing
 	}
-	assert.Len(t, ingresses, 3, "stable pair + one clone (only the Ingress with a cloned backend)")
+	assert.Len(t, ingresses, 1, "only the Ingress clone with a cloned backend is applied")
 
 	clone, ok := byName["cache-ing-wt-feat-auth"]
 	require.True(t, ok, "missing Ingress clone")
@@ -557,18 +536,10 @@ spec:
 	assert.Equal(t, "cache-wt-feat-auth", backend.Service.Name,
 		"clone backend must point at the clone Service")
 
-	stable, ok := byName["cache-ing"]
-	require.True(t, ok, "stable cache-ing must still be applied")
-	_, hasAnn := stable.Annotations["tilt.dev/worktree"]
-	assert.False(t, hasAnn, "stable Ingress must not be annotated")
-	assert.Equal(t, "cache", stable.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name,
-		"stable Ingress backend must be untouched")
-
-	dbIngress, ok := byName["db-ing"]
-	require.True(t, ok, "shared-backend Ingress must still be applied")
-	_, hasAnn = dbIngress.Annotations["tilt.dev/worktree"]
-	assert.False(t, hasAnn, "Ingress with no cloned backend must not be cloned")
-	assert.Equal(t, "postgres", dbIngress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
+	// Stable Ingresses are main-run-owned: neither the cloned-backend
+	// Ingress nor the shared-backend one is applied by the worktree run.
+	assert.NotContains(t, byName, "cache-ing")
+	assert.NotContains(t, byName, "db-ing")
 }
 
 // Stable entities never reference clone names: the rewrite must not touch
@@ -635,13 +606,97 @@ spec:
 	f.Create(&ka)
 	f.MustReconcile(types.NamespacedName{Name: "a"})
 
-	for _, d := range deployEntities(t, f.kClient.Yaml) {
-		if d.Name != "api" {
-			continue
-		}
-		env := d.Spec.Template.Spec.Containers[0].Env
-		require.Len(t, env, 1)
-		assert.Equal(t, "cache", env[0].Value,
-			"stable entity must keep the bare sibling ref")
+	// The worktree run applies only the clones (stable is main-run-owned):
+	// the clone's sibling ref resolves to the clone Service, and the bare
+	// ref never reaches the applied set.
+	clones := deployEntities(t, f.kClient.Yaml)
+	require.Len(t, clones, 2, "cache + api clones")
+	byName := map[string]*appsv1.Deployment{}
+	for _, d := range clones {
+		byName[d.Name] = d
 	}
+	apiClone := byName["api-wt-feat-auth"]
+	require.NotNil(t, apiClone)
+	env := apiClone.Spec.Template.Spec.Containers[0].Env
+	require.Len(t, env, 1)
+	assert.Equal(t, "cache-wt-feat-auth", env[0].Value,
+		"clone's sibling ref must resolve to the clone Service")
+	assert.NotContains(t, f.kClient.Yaml, "value: cache\n",
+		"the bare sibling ref must not be applied by the worktree run")
+}
+
+// Worktree clone YAML renders the STABLE image repo (chart values/templates
+// author the stable name; the clone stamping renames workloads/Services,
+// not image refs), while the ImageMap identity is worktree-scoped. The
+// injection must match the stable ref and still inject THIS worktree's
+// built image. Live repro: examples/worktrees-helm, "Docker image missing
+// from yaml: wt-helm_api-wt-wt-a".
+func TestWorktreeCloneStamping_InjectsStableImageRef(t *testing.T) {
+	yaml := `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: wt-helm/api:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app: api
+  ports:
+  - port: 8080
+`
+	f := newFixture(t)
+	f.Create(&v1alpha1.ImageMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "wt-helm_api-wt-wt-a"},
+		Spec: v1alpha1.ImageMapSpec{
+			Selector: "wt-helm/api-wt-wt-a",
+		},
+		Status: v1alpha1.ImageMapStatus{
+			Image:            "wt-helm/api-wt-wt-a:my-tag",
+			ImageFromCluster: "wt-helm/api-wt-wt-a:my-tag",
+		},
+	})
+	ka := v1alpha1.KubernetesApply{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec: v1alpha1.KubernetesApplySpec{
+			YAML:      yaml,
+			Worktree:  "wt-a",
+			ImageMaps: []string{"wt-helm_api-wt-wt-a"},
+		},
+	}
+	f.Create(&ka)
+	f.MustReconcile(types.NamespacedName{Name: "a"})
+
+	f.MustGet(types.NamespacedName{Name: "a"}, &ka)
+	require.Empty(t, ka.Status.Error)
+
+	applied := f.kClient.Yaml
+	// The worktree's built image replaced the stable chart ref.
+	require.Contains(t, applied, "wt-helm/api-wt-wt-a:my-tag")
+	require.NotContains(t, applied, "wt-helm/api:latest",
+		"the stable chart ref must be replaced by the worktree's built image")
+	// The workload is clone-stamped alongside the injection, and the stable
+	// workload is not applied by the worktree run.
+	clones := deployEntities(t, applied)
+	require.Len(t, clones, 1, "only the clone Deployment is applied")
+	require.Equal(t, "api-wt-wt-a", clones[0].Name)
+	require.Equal(t, "wt-helm/api-wt-wt-a:my-tag", clones[0].Spec.Template.Spec.Containers[0].Image)
 }

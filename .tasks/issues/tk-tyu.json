@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-tyu",
+  "title": "Docs rewrite: binary flag + namespace model",
+  "description": "docs/worktrees.md: binary flag table (unflagged",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-19T07:07:24.926Z",
+  "updated_at": "2026-09-19T07:07:48.720Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-kdb",
+  "sprint": null,
+  "labels": [],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "attachments": [],
+  "dependencies": [
+    {
+      "issue_id": "tk-tyu",
+      "depends_on_id": "tk-6z9",
+      "type": "blocks",
+      "created_at": "2026-09-19T07:07:48.058Z",
+      "created_by": "yuri",
+      "metadata": {}
+    },
+    {
+      "issue_id": "tk-tyu",
+      "depends_on_id": "tk-l2r",
+      "type": "blocks",
+      "created_at": "2026-09-19T07:07:48.719Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 2,
+  "dependent_count": 0,
+  "comments": [],
+  "comment_count": 0
+}

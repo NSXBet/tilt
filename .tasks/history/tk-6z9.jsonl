@@ -1,0 +1,2 @@
+{"issue_id":"tk-6z9","action":"save","at":"2026-09-19T07:07:24.613Z","actor":null,"data":{"status":"open","title":"Image tags <digest>-<worktree> + reconciler injection green"}}
+{"issue_id":"tk-6z9","action":"dependency_added","at":"2026-09-19T07:07:47.452Z","actor":"yuri","data":{"target":"tk-sxa","type":"blocks"}}

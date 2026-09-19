@@ -7,6 +7,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
+	"github.com/tilt-dev/tilt/internal/tiltfile/worktree"
 	"github.com/tilt-dev/tilt/pkg/logger"
 	"github.com/tilt-dev/tilt/pkg/model"
 	"github.com/tilt-dev/tilt/pkg/model/logstore"
@@ -148,3 +149,14 @@ type AppendToTriggerQueueAction struct {
 }
 
 func (AppendToTriggerQueueAction) Action() {}
+
+// WorktreesChangedAction reports a fresh position-based discovery of the
+// worktree dir (worktree auto-watch): the watcher re-runs worktree.Discover
+// on fs events and dispatches the full new set; the reducer replaces
+// EngineState.Worktrees wholesale. The configs controller then syncs the
+// worktree Tiltfile CRs against it (create missing, delete removed).
+type WorktreesChangedAction struct {
+	Worktrees []worktree.Worktree
+}
+
+func (WorktreesChangedAction) Action() {}

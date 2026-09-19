@@ -71,6 +71,16 @@ the flag Tilt behaves exactly as upstream.
    tilt up --worktrees
    ```
 
+   Discovery stays live for the process lifetime: worktrees created after
+   startup are picked up automatically (a `tiltfile:<worktree>` run loads,
+   exactly like a startup-discovered one — live reload included), and
+   deleting a worktree directory tears its run down: the Tiltfile CR is
+   removed, its manifests and owned objects are deleted, and the clone
+   objects (labeled/annotated `tilt.dev/worktree`) are pruned. A checkout
+   whose `Tiltfile` has not been checked out yet is picked up once it
+   appears (the watcher rescans for a few seconds after the dir-create
+   event).
+
    `tilt down` tears down every worktree's resources, including the
    clone objects Tilt created (labeled/annotated `tilt.dev/worktree`).
    Deleting a worktree directory while Tilt runs is handled too: the

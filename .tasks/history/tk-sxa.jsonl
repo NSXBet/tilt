@@ -1,0 +1,2 @@
+{"issue_id":"tk-sxa","action":"save","at":"2026-09-19T07:07:24.451Z","actor":null,"data":{"status":"open","title":"Namespace isolation: <base-ns>-<worktree> replaces clone stamping"}}
+{"issue_id":"tk-sxa","action":"dependency_added","at":"2026-09-19T07:07:47.075Z","actor":"yuri","data":{"target":"tk-eyg","type":"blocks"}}

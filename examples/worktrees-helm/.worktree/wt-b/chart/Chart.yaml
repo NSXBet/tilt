@@ -1,0 +1,6 @@
+apiVersion: v2
+name: wt-helm
+description: The branch-local api stack for the worktrees-helm example.
+type: application
+version: 0.1.0
+appVersion: "1.0"

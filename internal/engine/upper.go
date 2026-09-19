@@ -11,9 +11,11 @@ import (
 
 	tiltanalytics "github.com/tilt-dev/tilt/internal/analytics"
 	"github.com/tilt-dev/tilt/internal/controllers/core/filewatch"
+	"github.com/tilt-dev/tilt/internal/controllers/core/filewatch/fsevent"
 	ctrltiltfile "github.com/tilt-dev/tilt/internal/controllers/core/tiltfile"
 	"github.com/tilt-dev/tilt/internal/engine/k8swatch"
 	"github.com/tilt-dev/tilt/internal/engine/local"
+	"github.com/tilt-dev/tilt/internal/engine/worktrees"
 	"github.com/tilt-dev/tilt/internal/hud"
 	"github.com/tilt-dev/tilt/internal/hud/prompt"
 	"github.com/tilt-dev/tilt/internal/hud/server"
@@ -93,12 +95,21 @@ func (u Upper) Start(
 	// set into the engine state before the configs controller runs, so it
 	// creates one Tiltfile CR per execution. A missing worktree dir means no
 	// worktrees: classic single-Tiltfile behavior.
-	var worktrees []worktree.Worktree
+	var discovered []worktree.Worktree
 	if worktreesEnabled {
-		worktrees, err = worktree.Discover(filepath.Dir(absTfPath), worktree.DefaultDir)
+		discovered, err = worktree.Discover(filepath.Dir(absTfPath), worktree.DefaultDir)
 		if err != nil {
 			return err
 		}
+	}
+
+	// Worktree auto-watch: keep discovery live for the process lifetime, so
+	// worktrees created (or removed) after startup are picked up without a
+	// restart. No initial dispatch — the seeding above already reflects the
+	// dir as of now; the watcher only reacts to later changes.
+	if worktreesEnabled {
+		watcher := worktrees.NewWatcher(u.store, fsevent.ProvideWatcherMaker())
+		go watcher.Run(ctx, absTfPath)
 	}
 
 	return u.Init(ctx, InitAction{
@@ -110,7 +121,7 @@ func (u Upper) Start(
 		Token:            token,
 		CloudAddress:     cloudAddress,
 		TerminalMode:     initTerminalMode,
-		Worktrees:        worktrees,
+		Worktrees:        discovered,
 	})
 }
 
@@ -189,6 +200,8 @@ func upperReducerFn(ctx context.Context, state *store.EngineState, action store.
 		tiltfiles.HandleTiltfileUpsertAction(state, action)
 	case tiltfiles.TiltfileDeleteAction:
 		tiltfiles.HandleTiltfileDeleteAction(state, action)
+	case store.WorktreesChangedAction:
+		handleWorktreesChangedAction(state, action)
 	case filewatches.FileWatchUpsertAction:
 		filewatches.HandleFileWatchUpsertAction(state, action)
 	case filewatches.FileWatchDeleteAction:
@@ -300,6 +313,14 @@ func handleInitAction(ctx context.Context, engineState *store.EngineState, actio
 	engineState.CloudAddress = action.CloudAddress
 	engineState.Token = action.Token
 	engineState.TerminalMode = action.TerminalMode
+	engineState.Worktrees = append(engineState.Worktrees[:0], action.Worktrees...)
+}
+
+// handleWorktreesChangedAction replaces the discovered worktree set wholesale
+// (worktree auto-watch): the watcher re-scans the worktree dir on fs events
+// and dispatches the full fresh set. The configs controller syncs the
+// worktree Tiltfile CRs against it.
+func handleWorktreesChangedAction(engineState *store.EngineState, action store.WorktreesChangedAction) {
 	engineState.Worktrees = append(engineState.Worktrees[:0], action.Worktrees...)
 }
 

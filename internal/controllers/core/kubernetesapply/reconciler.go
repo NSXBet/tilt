@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -564,6 +565,38 @@ func (r *Reconciler) createEntitiesToDeploy(ctx context.Context,
 			e, replaced, err = k8s.InjectImageDigest(e, selector, ref, locators, matchInEnvVars, policy)
 			if err != nil {
 				return nil, err
+			}
+			if !replaced && spec.Worktree != "" {
+				// Worktree clone YAML renders the STABLE image repo: chart
+				// values/templates author the stable name, and the clone
+				// stamping renames workloads/Services, not image refs. The
+				// ImageMap selector is worktree-scoped (boundary pass,
+				// <ref>-wt-<worktree>), so it never matches the chart's ref.
+				// Retry with the stable selector — the scoped one minus the
+				// tag token — still injecting this worktree's built image
+				// (ref comes from this run's ImageMap status). A repo that
+				// genuinely ends with the token loses the fallback first to
+				// the scoped match, so the trim only fires for chart-shaped
+				// refs.
+				token, terr := container.WorktreeTagSuffix(spec.Worktree)
+				if terr != nil {
+					return nil, terr
+				}
+				stableSel := imageMapSpec.Selector
+				stableSel = strings.TrimSuffix(stableSel, token)
+				if stableSel != imageMapSpec.Selector {
+					stable, serr := container.SelectorFromImageMap(v1alpha1.ImageMapSpec{
+						Selector:   stableSel,
+						MatchExact: imageMapSpec.MatchExact,
+					})
+					if serr != nil {
+						return nil, serr
+					}
+					e, replaced, err = k8s.InjectImageDigest(e, stable, ref, locators, matchInEnvVars, policy)
+					if err != nil {
+						return nil, err
+					}
+				}
 			}
 			if replaced {
 				injectedImageMaps[imageMapName] = true

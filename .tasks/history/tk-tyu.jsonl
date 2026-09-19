@@ -1,0 +1,3 @@
+{"issue_id":"tk-tyu","action":"save","at":"2026-09-19T07:07:24.927Z","actor":null,"data":{"status":"open","title":"Docs rewrite: binary flag + namespace model"}}
+{"issue_id":"tk-tyu","action":"dependency_added","at":"2026-09-19T07:07:48.060Z","actor":"yuri","data":{"target":"tk-6z9","type":"blocks"}}
+{"issue_id":"tk-tyu","action":"dependency_added","at":"2026-09-19T07:07:48.724Z","actor":"yuri","data":{"target":"tk-l2r","type":"blocks"}}

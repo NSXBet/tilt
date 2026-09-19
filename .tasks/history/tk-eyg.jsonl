@@ -1,0 +1,2 @@
+{"issue_id":"tk-eyg","action":"save","at":"2026-09-19T07:07:24.267Z","actor":null,"data":{"status":"open","title":"Engine names: suffix <name>-<worktree> replaces wt: prefix"}}
+{"issue_id":"tk-eyg","action":"dependency_added","at":"2026-09-19T07:07:46.543Z","actor":"yuri","data":{"target":"tk-rjo","type":"blocks"}}

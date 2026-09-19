@@ -142,13 +142,32 @@ func (r *k8sResource) addEntities(entities []k8s.K8sEntity,
 func (s *tiltfileState) k8sYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var yamlValue starlark.Value
 	var allowDuplicates bool
+	var scopeVal value.Stringable
 
 	if err := s.unpackArgs(fn.Name(), args, kwargs,
 		"yaml", &yamlValue,
 		"allow_duplicates?", &allowDuplicates,
+		"scope?", &scopeVal,
 	); err != nil {
 		return nil, err
 	}
+
+	// Scope declaration (plan §3): manifests instantiate only in the runs
+	// their scope names — e.g. main-scoped shared foundation (a Secret, a
+	// database) drops out of every worktree run, while scope-less chart
+	// output re-instantiates everywhere and gets clone-stamped in worktree
+	// runs. Validated before the drop so a malformed scope errors identically
+	// in every run. Note the producers (local/helm/kustomize blobs) still
+	// render in every run; only the ingestion is scoped.
+	scope, err := parseScope(fn.Name(), scopeVal.Value)
+	if err != nil {
+		return nil, err
+	}
+	if !scopeInstantiates(scope, s.worktree) {
+		s.skipScope(fn.Name(), "", scope)
+		return starlark.None, nil
+	}
+
 	//normalize the starlark value into a slice
 	value := starlarkValueOrSequenceToSlice(yamlValue)
 
@@ -305,6 +324,7 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 	var autoInit = value.Optional[starlark.Bool]{Value: true}
 	var labels value.LabelSet
 	var discoveryStrategy tiltfile_k8s.DiscoveryStrategy
+	var scopeVal value.Stringable
 
 	if err := s.unpackArgs(fn.Name(), args, kwargs,
 		"workload?", &workload,
@@ -319,8 +339,28 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 		"links?", &links,
 		"labels?", &labels,
 		"discovery_strategy?", &discoveryStrategy,
+		"scope?", &scopeVal,
 	); err != nil {
 		return nil, err
+	}
+
+	// Scope declaration (plan §3): the grouping/forward call instantiates
+	// only in the runs its scope names. A main-scoped resource's workload is
+	// scope-dropped from worktree runs, so its k8s_resource call must drop
+	// too — otherwise it fails at assembly with "specified unknown resource".
+	// Validated before the drop so a malformed scope errors identically in
+	// every run.
+	scope, err := parseScope(fn.Name(), scopeVal.Value)
+	if err != nil {
+		return nil, err
+	}
+	if !scopeInstantiates(scope, s.worktree) {
+		groupedName := workload.String()
+		if groupedName == "" {
+			groupedName = newName.String()
+		}
+		s.skipScope(fn.Name(), groupedName, scope)
+		return starlark.None, nil
 	}
 
 	resourceName := workload.String()

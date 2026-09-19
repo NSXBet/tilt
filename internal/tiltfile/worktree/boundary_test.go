@@ -36,6 +36,7 @@ func boundaryMd(name string, deps ...string) model.Manifest {
 	iTarget.LiveUpdateName = apis.SanitizeName(name + ":" + iTarget.ID().Name.String())
 	iTarget.DockerImageName = apis.SanitizeName(name + ":" + iTarget.ID().Name.String())
 	m.ImageTargets = []model.ImageTarget{iTarget}
+	m = m.WithDeployTarget(model.K8sTarget{Name: model.TargetName(name)})
 	return m
 }
 
@@ -82,22 +83,44 @@ func TestApplyBoundary_ClonesAndDeps(t *testing.T) {
 	require.Equal(t, model.ManifestName("tiltfile:feat-auth"), api.SourceTiltfile)
 }
 
-// Shared manifest flowing through the run: keeps its bare engine name (the
-// worktree's definition wins, plan §3) and its derived names stay bare too.
-func TestApplyBoundary_SharedManifestStaysBare(t *testing.T) {
-	main := []model.Manifest{boundaryMd("postgres")}
+// A worktree run's k8s manifest whose name main also defines is the
+// worktree's OWN instantiation — a clone, not a shared redefinition (plan
+// §4.1/§4.2 additive siblings). Bare would collide with the main run's
+// apiserver objects (KubernetesApply CRs are keyed by manifest name) and
+// never reach the clone-stamping pass; the live examples/worktrees-helm run
+// caught exactly that: "create kubernetesapplys/api already exists".
+func TestApplyBoundary_K8sSharedNameBecomesClone(t *testing.T) {
+	main := []model.Manifest{boundaryMd("api")}
 	out, err := ApplyBoundary(main, RunResult{
 		Name:      "feat-auth",
-		Manifests: []model.Manifest{boundaryMd("postgres")},
+		Manifests: []model.Manifest{boundaryMd("api")},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []model.ManifestName{"wt:feat-auth_api"}, out.Defined)
+	m := out.Manifests[0]
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), m.Name)
+	require.True(t, m.IsK8s())
+	// The clone rides the full clone path: scoped ImageMap identity and the
+	// worktree stamp on the k8s apply spec (renameDerived).
+	require.Contains(t, m.ImageTargets[0].ImageMapSpec.Selector, "-wt-feat-auth")
+	require.Equal(t, "feat-auth", m.K8sTarget().KubernetesApplySpec.Worktree)
+}
+
+// Shared manifest flowing through the run: LOCAL manifests keep the bare
+// engine name (the worktree's definition wins, plan §3 shared-hack) and
+// their derived names stay bare too.
+func TestApplyBoundary_SharedManifestStaysBare(t *testing.T) {
+	main := []model.Manifest{localMd("postgres")}
+	out, err := ApplyBoundary(main, RunResult{
+		Name:      "feat-auth",
+		Manifests: []model.Manifest{localMd("postgres")},
 	})
 	require.NoError(t, err)
 
 	m := out.Manifests[0]
 	require.Equal(t, []model.ManifestName{"postgres"}, out.Defined)
 	require.Equal(t, model.ManifestName("postgres"), m.Name)
-	// Derived names re-stamp from the bare name: unchanged.
-	require.Equal(t, "postgres:"+m.ImageTargets[0].ID().Name.String(), m.ImageTargets[0].LiveUpdateName)
-	require.Equal(t, "postgres:"+m.ImageTargets[0].ID().Name.String(), m.ImageTargets[0].DockerImageName)
 }
 
 // Derived names: a clone's DockerImage/LiveUpdate object names re-stamp with

@@ -1,0 +1,53 @@
+# -*- mode: Python -*-
+#
+# Run from this directory:
+#
+#   tilt up --worktrees
+#
+# Tilt executes this file once for the main checkout and once for every
+# .worktree/<name>/Tiltfile checkout. There is no branching: every resource
+# declares its scope, and each run instantiates only what its scope names.
+
+worktree_config(port_range=(30000, 30100))
+
+allow_k8s_contexts(["orbstack", "docker-desktop", "kind-orbstack", "kind-kind"])
+
+# Every run builds from its own checkout. Worktree runs build from THEIR
+# checkout into their own image lineage (-wt-<worktree> tag), so a branch's
+# edits never touch the main image. Edits inside a worktree live-update only
+# that worktree's clone.
+docker_build(
+    "wt-helm/api",
+    "api/",
+    dockerfile="api/Dockerfile",
+    live_update=[
+        fall_back_on(paths="api/go.mod"),
+        sync("api/", "/app"),
+        run("cd /app && go build -o server .", trigger="api/go.mod"),
+    ],
+)
+
+# Foundation, instantiated once (main run): layered env → one Secret.
+# Worktree runs share it — Secrets pass through clones untouched.
+k8s_yaml(
+    local(["bash", "env-to-secret.sh"], quiet=True),
+    scope="main",
+)
+
+# The branch-local stack, rendered by helm in every run. In worktree runs the
+# apply pass clone-stamps every workload + Service (api-wt-<worktree>: own
+# Service DNS, own image); the main run deploys the stable stack.
+k8s_yaml(helm("chart", name="wt-helm", values=["chart/values.yaml"]))
+
+# Shared stateful foundation — plain manifests, main-scoped. One postgres;
+# every clone reaches it by the stable `postgres` DNS name. (PVCs never
+# clone — RWO — so this must be main-scoped, not re-rendered per branch.)
+k8s_yaml("infra.yaml", scope="main")
+
+# Forwards: postgres once (main-scoped). The api forward is
+# registry-allocated (local_port 0): the main run and every worktree get a
+# distinct, stable local port — no collisions, no port dict. With
+# --gateway-port, <worktree>.tilt.localhost routes to each worktree's clone
+# Service instead.
+k8s_resource("postgres", port_forwards=["5433:5432"], scope="main")
+k8s_resource("api", port_forwards=[port_forward(0, container_port=8080)])

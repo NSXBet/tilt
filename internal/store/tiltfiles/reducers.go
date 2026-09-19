@@ -37,6 +37,19 @@ func HandleTiltfileDeleteAction(state *store.EngineState, action TiltfileDeleteA
 	delete(state.Tiltfiles, n)
 	delete(state.TiltfileStates, mn)
 
+	// Remove every manifest this run sourced (same removal rule as
+	// HandleConfigsReloaded). Nothing reloads a deleted Tiltfile CR, so the
+	// manifests would otherwise linger as ghost resources — the worktree
+	// auto-watch deletes a worktree's CR when its checkout vanishes, and its
+	// manifests must go with it. The CR's owned apiserver objects (Cmds,
+	// KubernetesApplys, ...) are deleted by the reconciler's updateOwnedObjects,
+	// and the clone objects by the worktree GC pass.
+	for _, mt := range state.Targets() {
+		if mt.Manifest.SourceTiltfile == mn {
+			state.RemoveManifestTarget(mt.Manifest.Name)
+		}
+	}
+
 	for i, x := range state.TiltfileDefinitionOrder {
 		if x == mn {
 			state.TiltfileDefinitionOrder = append(
