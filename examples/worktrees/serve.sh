@@ -1,10 +1,13 @@
 #!/bin/bash
-# Usage: serve.sh <name> <port>
+# Usage: serve.sh [name] [port]
 # A tiny local HTTP server whose response identifies the active checkout.
+# In worktree runs Tilt injects both (worktree.name() and $TILT_SERVE_PORT);
+# in the main run the flagged resource runs with an empty name and no
+# injected env, so it defaults to "main" on the authored serve_port.
 set -euo pipefail
 
-name="$1"
-port="$2"
+name="${1:-main}"
+port="${2:-30001}"
 
 exec python3 - "$name" "$port" <<'PYEOF'
 import http.server

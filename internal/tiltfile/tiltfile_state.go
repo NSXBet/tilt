@@ -1668,6 +1668,18 @@ func (s *tiltfileState) translateLocal() ([]model.Manifest, error) {
 					r.name, servePort)
 			}
 			servePort = port
+		} else if servePort != 0 && s.worktree == "" && r.worktreeInherit {
+			// Main run of a worktree=True resource: the serve process binds
+			// the authored port directly (no TILT_SERVE_PORT injection).
+			// Reserve it under this run's owner before any worktree run
+			// loads — main's Tiltfile, and this pass, always execute first —
+			// so Allocate in a worktree run never hands a clone the port
+			// main is about to bind. Same sticky key contract as the
+			// worktree-run branch; the table is process-lifetime.
+			if _, err := portregistry.Allocate(wtLocalResourcePortOwner(s.worktree, r.name), servePort); err != nil {
+				return nil, errors.Wrapf(err, "reserving main-run serve port for local_resource %q (authored port %d)",
+					r.name, servePort)
+			}
 		}
 
 		serveCmd := r.serveCmd

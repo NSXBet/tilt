@@ -45,7 +45,11 @@ type localResource struct {
 	// worktree runs: the loader rewrites it through portregistry.Allocate
 	// and injects TILT_SERVE_PORT so the process binds the deconflicted
 	// port (plan §4.5/§5). Main runs keep the authored value.
-	servePort     int
+	servePort int
+	// worktree=True: this resource instantiates in every run; a main run
+	// reserves its authored serve port in the registry so worktree clones
+	// never receive it (see translateLocal).
+	worktreeInherit bool
 	threadDir     string
 	deps          []string
 	triggerMode   triggerMode
@@ -163,20 +167,21 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 	}
 
 	res := &localResource{
-		name:           string(name),
-		updateCmd:      updateCmd,
-		serveCmd:       serveCmd,
-		servePort:      int(servePort),
-		threadDir:      starkit.AbsWorkingDir(thread),
-		deps:           deps.Value,
-		triggerMode:    triggerMode,
-		autoInit:       autoInit,
-		resourceDeps:   resourceDeps,
-		ignores:        ignores,
-		allowParallel:  allowParallel,
-		links:          links.Links,
-		labels:         labels.Values,
-		readinessProbe: probeSpec,
+		name:            string(name),
+		updateCmd:       updateCmd,
+		serveCmd:        serveCmd,
+		servePort:       int(servePort),
+		worktreeInherit: worktreeFlag,
+		threadDir:       starkit.AbsWorkingDir(thread),
+		deps:            deps.Value,
+		triggerMode:     triggerMode,
+		autoInit:        autoInit,
+		resourceDeps:    resourceDeps,
+		ignores:         ignores,
+		allowParallel:   allowParallel,
+		links:           links.Links,
+		labels:          labels.Values,
+		readinessProbe:  probeSpec,
 	}
 
 	// check for duplicate resources by name and throw error if found

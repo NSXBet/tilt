@@ -1,2 +1,4 @@
 {"issue_id":"tk-1xe","action":"save","at":"2026-09-19T07:07:23.725Z","actor":null,"data":{"status":"open","title":"Commit in-flight baseline (auto-watch teardown, scope, injection fallback)"}}
 {"issue_id":"tk-1xe","action":"claim_ready","at":"2026-09-19T07:09:06.393Z","actor":"yuri","data":{"assignee":"yuri","status":"in_progress"}}
+{"issue_id":"tk-1xe","action":"save","at":"2026-09-19T07:14:43.522Z","actor":null,"data":{"status":"in_progress","title":"Commit in-flight baseline (auto-watch teardown, scope, injection fallback)"}}
+{"issue_id":"tk-1xe","action":"save","at":"2026-09-19T07:15:21.666Z","actor":null,"data":{"status":"closed","title":"Commit in-flight baseline (auto-watch teardown, scope, injection fallback)"}}

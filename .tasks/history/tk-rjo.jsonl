@@ -1,2 +1,4 @@
 {"issue_id":"tk-rjo","action":"save","at":"2026-09-19T07:07:24.013Z","actor":null,"data":{"status":"open","title":"Binary worktree=True flag; delete scope="}}
 {"issue_id":"tk-rjo","action":"dependency_added","at":"2026-09-19T07:07:46.099Z","actor":"yuri","data":{"target":"tk-1xe","type":"blocks"}}
+{"issue_id":"tk-rjo","action":"claim_ready","at":"2026-09-19T07:15:21.770Z","actor":"yuri","data":{"assignee":"yuri","status":"in_progress"}}
+{"issue_id":"tk-rjo","action":"save","at":"2026-09-19T08:13:24.867Z","actor":null,"data":{"status":"ready-to-review","title":"Binary worktree=True flag; delete scope="}}

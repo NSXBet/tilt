@@ -4,15 +4,15 @@
   "id": "tk-rjo",
   "title": "Binary worktree=True flag; delete scope=",
   "description": "internal/tiltfile: add worktree? bool to docker_build, custom_build, helm, k8s_yaml, kustomize, k8s_resource, local_resource, docker_compose(_resource). Semantics: instantiate iff main run OR worktree",
-  "status": "open",
+  "status": "ready-to-review",
   "priority": 1,
   "issue_type": "task",
   "owner": null,
-  "assignee": null,
+  "assignee": "yuri",
   "created_by": "yuri",
   "created_at": "2026-09-19T07:07:24.010Z",
-  "updated_at": "2026-09-19T07:07:46.097Z",
-  "started_at": null,
+  "updated_at": "2026-09-19T08:13:24.866Z",
+  "started_at": "2026-09-19T07:15:21.770Z",
   "closed_at": null,
   "due_at": null,
   "defer_until": null,
@@ -39,7 +39,7 @@
     }
   ],
   "dependency_count": 1,
-  "dependent_count": 0,
+  "dependent_count": 1,
   "comments": [],
   "comment_count": 0
 }

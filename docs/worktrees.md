@@ -13,42 +13,44 @@ the flag Tilt behaves exactly as upstream.
 
 ## Enabling worktrees
 
-1. Declare each resource's scope. The SAME root Tiltfile executes once for
-   the main checkout and once for every worktree; `scope` says which run
-   instantiates what, so the Tiltfile needs no branching:
+1. Flag each resource. The SAME root Tiltfile executes once for the main
+   checkout and once for every worktree; an unflagged declaration is
+   main-run only (worktree runs skip it), and `worktree=True` instantiates
+   it in every run. No branching, no `if worktree.name()`:
 
    ```python
-   # foundation: instantiated once, in the main run only — every worktree
-   # inherits it through dep resolution and never re-runs it
-   local_resource("admin-bff-image", cmd="docker pull ...@sha256:...", scope="main")
+   # foundation: unflagged — instantiated once, in the main run only;
+   # worktree runs skip the declaration and inherit it implicitly
+   local_resource("admin-bff-image", cmd="docker pull ...@sha256:...")
 
-   # branch-local: instantiated once per worktree, never in the main run;
-   # the port registry deconflicts serve_port per worktree and always
-   # injects the allocated port as $TILT_SERVE_PORT (the serve process
-   # binds the env var, never the authored request)
+   # branch-local: worktree=True — instantiated in every run. The main run
+   # gets the stable resource; a worktree run gets its clone. The port
+   # registry deconflicts serve_port per worktree and always injects the
+   # allocated port as $TILT_SERVE_PORT (the serve process binds the env
+   # var, never the authored request)
    local_resource("app",
                   serve_cmd="./serve.sh %s $TILT_SERVE_PORT" % worktree.name(),
-                  serve_port=8080, scope="worktree")
+                  serve_port=8080, worktree=True)
 
-   # YAML/helm/shared-infra declarations have no resource identity to
-   # scope on, so those blocks still branch on the run context:
-   if worktree.name() == "":
-       k8s_yaml(dedupe_env(helm("local", name="incidents", values=["local/values.yaml"])))
-       k8s_yaml("local/infra.yaml")           # postgres + friends
-       k8s_resource("postgres", port_forwards=["5433:5432"])
-       k8s_resource("admin-bff", port_forwards=["8080"])
-   else:
-       # what THIS branch tests — the only thing that gets cloned
-       docker_build(REG + "/incidents-admin", ".", dockerfile="Dockerfile",
-                    only=["web/"], live_update=[sync("web/src", "/app/src")])
-       k8s_resource("incidents-admin", port_forwards=["3004:3004"])
+   # branch-local YAML stack: flag the k8s_yaml, not helm — in a worktree
+   # run helm() never renders; the stub fills from main's rendered output
+   # and applies clone-stamped (own Service DNS, own image)
+   docker_build(REG + "/incidents-admin", ".", dockerfile="Dockerfile",
+                only=["web/"], live_update=[sync("web/src", "/app/src")])
+   k8s_yaml(helm("local", name="incidents", values=["local/values.yaml"]),
+            worktree=True)
+   k8s_resource("incidents-admin", port_forwards=["3004:3004"], worktree=True)
+
+   # shared infra: unflagged — main deploys postgres exactly once; clones
+   # reach it by its stable `postgres` DNS name
+   k8s_yaml("local/infra.yaml")
+   k8s_resource("postgres", port_forwards=["5433:5432"])
    ```
 
-   In a worktree run every path — `docker_build` contexts, `sync()`,
-   `local()` — resolves inside the worktree checkout with zero path edits.
-   Worktree runs execute the SAME root Tiltfile; a worktree checkout may
-   also carry its own Tiltfile for discovery purposes, but the root
-   Tiltfile is what executes.
+   `docker_build` takes no flag and is not worktree-gated: every run
+   builds from its own checkout into its own image lineage
+   (`-wt-<worktree>` tag), and the engine injects a worktree's image into
+   its clone's pod — a branch's edits never touch the main image.
 
 2. Create the worktree dir and checkouts:
 
@@ -194,32 +196,45 @@ one-line adoption goal) or hides cross-namespace DNS behind alias hacks.
 Same-namespace clones keep chart-internal DNS, Secrets, and ConfigMaps
 working untouched — only the flagged workload's pods move.
 
-## Scoping resources: `local_resource(scope=)`
+## The worktree flag: `worktree=True`
 
-Resources declare where they instantiate; the loader enforces it. No
-branching:
+Declarations state which runs instantiate them; the loader enforces it. No
+branching. The flag exists on `local_resource`, `k8s_yaml`, and
+`k8s_resource`; `helm()` itself is never flagged — in a worktree run it
+does not render at all, so flag the wrapping `k8s_yaml`.
 
 ```python
-local_resource("admin-bff-image", cmd="docker pull ...@sha256:...", scope="main")
-local_resource("app", serve_cmd="./serve.sh $TILT_SERVE_PORT", serve_port=8080,
-               scope="worktree")
+local_resource("admin-bff-image", cmd="docker pull ...@sha256:...")          # main-only
+local_resource("app", serve_cmd="./serve.sh $TILT_SERVE_PORT",
+               serve_port=8080, worktree=True)                               # every run
+k8s_yaml(helm("local", name="incidents", values=["local/values.yaml"]),
+         worktree=True)                                                      # every run
+k8s_resource("incidents-admin", port_forwards=["3004:3004"], worktree=True)
+k8s_yaml("local/infra.yaml")                                                 # main-only
 ```
 
-| `scope=` | main run | worktree runs |
-|----------|----------|---------------|
-| `"main"` | instantiated | dropped |
-| `"worktree"` | dropped | instantiated (engine-prefixed clone, worktree cwd, registry serve port) |
-| `"all"` (default) | instantiated | instantiated (worktree runs get the clone treatment) |
+| declaration | main run | worktree runs |
+|-------------|----------|---------------|
+| `local_resource(...)` / `k8s_yaml(...)` / `k8s_resource(...)` / `docker_compose(...)` unflagged | instantiated | skipped (inherit through dep resolution) |
+| `... , worktree=True` | instantiated (the stable resource) | instantiated — engine clone `wt:<worktree>_<name>`, worktree cwd, registry serve port |
+| `helm()` inside an unflagged `k8s_yaml` | renders | skipped with its wrapper |
+| `helm()` inside a flagged `k8s_yaml` | renders (main run owns the render) | NOT re-rendered: the run's `k8s_resource` gets a zero-entity stub the engine fills from main's rendered YAML, then clone-stamps at apply — own Service DNS, own image |
+| `docker_build(...)` (no flag exists) | builds from the main checkout | builds from the worktree checkout into a `-wt-<worktree>` image lineage; the engine injects a worktree's images into its clone's pods |
+| `docker_compose(...)` | instantiated | instantiated — compose project suffixed per worktree, ports deconflicted by the registry |
 
-A scoped resource is dropped — not re-defined — in the runs its scope does
-not name, so shared resources keep main's authored shape (ports included)
-and never trigger the shared-double-define error below.
+An unflagged declaration is skipped — not re-defined — in worktree runs, so
+shared resources keep main's authored shape (ports included) and never
+trigger a double-define. In the main run a flagged declaration is the plain
+stable resource; only worktree runs get clones. A flagged `k8s_resource`
+whose YAML producer was skipped in a run attaches to the stub and inherits
+main's manifests at combine time (`worktree/stub`), so clone stamping never
+depends on a chart rendering twice.
 
 ## The `worktree.name()` escape hatch
 
 `worktree.name()` (plus the branch helpers) is the single line of worktree
-awareness for everything `scope=` cannot express (YAML/helm blocks,
-worktree-aware scripts):
+awareness for everything the flag cannot express — worktree-aware scripts,
+`k8s_custom_deploy` commands, derived names and links:
 
 | call | main run | worktree run |
 |------|----------|--------------|
@@ -234,17 +249,20 @@ the run executes for: the injected worktree dir, or the main Tiltfile's
 directory for the main run. A checkout outside any git repo is an error —
 if a Tiltfile branches on branches, "not a repo" cannot degrade to False.
 
-Branching on it converts an existing Tiltfile:
+Branching a Tiltfile on `worktree.name() == ""` — the pre-flag idiom — still
+executes, but it is the wrong tool now: under the flag model the loader
+already gates each declaration, so a conditional wrapper only obscures what
+instantiates where. Reserve the helpers for names, paths, and commands:
 
 ```python
-WT = worktree.name()
+# a one-off migration whose objects Tilt does not manage
+k8s_custom_deploy("migrate",
+                  apply_cmd="bash migrate.sh -n incidents -wt " + worktree.name(),
+                  ...)
 
-if WT == "":
-    # everything that must exist exactly once
-else:
-    # only this branch's resources; deps on shared names
-    # (resource_deps=['postgres']) resolve to main's definitions
-    # automatically
+# a link that names the branch
+local_resource("docs", serve_cmd="mkdocs serve",
+               links=["http://localhost:8000/preview/" + worktree.name()])
 ```
 
 For checkouts whose directory name mirrors the branch (`git worktree add
@@ -264,12 +282,12 @@ Rules the loader enforces across runs:
 
 - A resource defined by BOTH main and a worktree run: the worktree's
   definition wins (it flows through with its bare engine name). Prefer
-  `scope=` — a scoped resource is dropped instead of re-defined, which
-  keeps the shared shape authored in exactly one place.
+  flags — an unflagged worktree-run definition is skipped instead of
+  re-defined, which keeps the shared shape authored in exactly one place.
 
 - The same resource name defined by TWO worktree runs: load error —
   per-branch resources must be named per branch (or share one
-  `scope="worktree"` declaration).
+  `worktree=True` declaration).
 - Deps resolve same-worktree first, else main-defined; a dep on a
   resource defined only by a *different* worktree is a load error.
 - A main-defined resource depending on a worktree clone is a load error
