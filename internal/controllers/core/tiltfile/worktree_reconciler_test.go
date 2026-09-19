@@ -95,13 +95,20 @@ func TestWorktreeRun_AfterMain_PrefixedAndStamped(t *testing.T) {
 	assert.Empty(t, mainKA.Spec.Worktree)
 }
 
-// A worktree run whose load completes BEFORE the main run's is parked
-// (hold-until-main) and replayed when the main run's load completes.
+// A worktree run created while the main run's load is in flight must not
+// EXECUTE at all: Tiltfile execution has process-global side effects — the
+// loader records the main run's authored serve ports in the port registry
+// during the main load — so the reconciler parks the START (gatedStarts)
+// until the main run settles, then kicks it (mainLoadCompleted). This
+// replaces the older park-the-result behavior: a worktree load that ran
+// before main could claim an authored port before main reserved it, and
+// both serve processes then bound the same port (observed on the worktrees
+// example: the feature-a clone took 30001 under the main app).
 //
-// The hold gate (mainSettled) only engages while the main run exists but
+// The gate (mainSettled) only engages while the main run exists but
 // hasn't finished a load, so the main run is created while its load is
 // blocked on a channel (mainRunBlocker). Everything else loads normally.
-func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
+func TestWorktreeRun_BeforeMain_GatedUntilMainLoads(t *testing.T) {
 	f := newFixture(t)
 	p := f.tempdir.JoinPath("Tiltfile")
 
@@ -122,57 +129,60 @@ func TestWorktreeRun_BeforeMain_HeldUntilMainLoads(t *testing.T) {
 	f.Create(mainTiltfile(p))
 	f.waitForRunning(model.MainTiltfileManifestName.String())
 
-	// The worktree run depends on the main-defined shared resource and
-	// finishes its own load while the main run is still blocked: the run
-	// parks — handleLoaded holds its result (heldWorktrees) and reports
-	// Terminated (empty result, no error) without creating owned objects.
+	// The worktree CR arrives while the main run is still blocked: its
+	// start parks on the gate and the Tiltfile never executes.
 	wt := manifestbuilder.New(f.tempdir, "web").WithK8sYAML(testyaml.SanchoYAML).
 		WithResourceDeps("postgres").Build()
 	f.tfl.Result = tiltfile.TiltfileLoadResult{Manifests: []model.Manifest{wt}}
-	f.createAndWaitForLoaded(worktreeTiltfile("feat-auth", p))
-	f.waitForParked("tiltfile:feat-auth")
 
-	// Held: no dispatch for the worktree run, no clone objects.
-	_, dispatched := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
-	assert.False(t, dispatched, "held worktree run must not dispatch before the main run loads")
+	wtName := "tiltfile:feat-auth"
+	f.Create(worktreeTiltfile("feat-auth", p))
+	f.MustReconcile(types.NamespacedName{Name: wtName})
+	f.waitForGated(wtName)
+
+	// Gated: no run record (the load never ran), no dispatch, no clone
+	// objects.
+	_, dispatched := configsReloadedFor(t, f.st, wtName)
+	assert.False(t, dispatched, "gated worktree run must not dispatch before the main run loads")
 	var ka v1alpha1.KubernetesApply
 	assert.False(t, f.Get(types.NamespacedName{Name: "wt:feat-auth_web"}, &ka),
-		"held worktree run must not create owned objects")
+		"gated worktree run must not create owned objects")
 
-	// The main run's load completes: its result dispatches, the parked
-	// worktree run is kicked (mainLoadCompleted), and one more reconcile
-	// replays its parked TLR (Reconcile's held-run branch) against the
-	// main run's manifests.
+	// The main run's load completes: its result dispatches and the gated
+	// start is kicked (mainLoadCompleted). Drain the queue: one reconcile
+	// re-tests the gate and starts the run, the load's loaded-step requeue
+	// then dispatches the engine-prefixed clone with deps resolved against
+	// the main run's manifests.
 	releaseOnce()
 	f.popQueueUntilTerminatedAfter(model.MainTiltfileManifestName.String(), time.Now())
-	f.MustReconcile(types.NamespacedName{Name: "tiltfile:feat-auth"})
+
+	wtTs := time.Now()
+	f.MustReconcile(types.NamespacedName{Name: wtName})
+	f.popQueueUntilTerminatedAfter(wtName, wtTs)
 
 	var cloneKA v1alpha1.KubernetesApply
-	require.Eventually(t, func() bool {
-		return f.Get(types.NamespacedName{Name: "wt:feat-auth_web"}, &cloneKA)
-	}, time.Second, time.Millisecond, "held worktree run must replay after the main run loads")
+	require.True(t, f.Get(types.NamespacedName{Name: "wt:feat-auth_web"}, &cloneKA),
+		"gated worktree run must create owned objects after the main run loads")
 	assert.Equal(t, "feat-auth", cloneKA.Spec.Worktree)
 
-	reloaded, ok := configsReloadedFor(t, f.st, "tiltfile:feat-auth")
-	require.True(t, ok, "replayed worktree run must dispatch")
+	reloaded, ok := configsReloadedFor(t, f.st, wtName)
+	require.True(t, ok, "started worktree run must dispatch")
 	require.Equal(t, model.ManifestName("wt:feat-auth_web"), reloaded.Manifests[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, reloaded.Manifests[0].ResourceDependencies,
-		"dep resolution must use the main run's manifests after replay")
+		"dep resolution must use the main run's manifests")
 }
 
-// waitForParked waits until the run's Tiltfile load finished but its result
-// is still parked on the hold-until-main gate: the run reports Terminated
-// (its turn is over) but holds the un-dispatched TLR for replay.
-func (f *fixture) waitForParked(name string) {
+// waitForGated waits until the run's START is parked on the hold-until-main
+// gate: the Tiltfile has not executed — no run record — and the reconcile
+// parked the nn in gatedStarts for mainLoadCompleted to kick.
+func (f *fixture) waitForGated(name string) {
 	f.T().Helper()
 	nn := types.NamespacedName{Name: name}
 	require.Eventually(f.T(), func() bool {
 		f.r.mu.Lock()
 		defer f.r.mu.Unlock()
-		run := f.r.runs[nn]
-		return run != nil && run.step == runStepDone && f.r.heldWorktrees[nn] &&
-			run.tlr != nil && run.tlr.Error == nil && len(run.tlr.Manifests) > 0
-	}, time.Second, time.Millisecond, "waiting for run to park on the hold-until-main gate")
+		return f.r.runs[nn] == nil && f.r.gatedStarts[nn]
+	}, time.Second, time.Millisecond, "waiting for run start to park on the worktree gate")
 }
 
 // mainRunBlocker blocks ONLY the main Tiltfile's load on `release`; every

@@ -59,6 +59,16 @@ type Reconciler struct {
 	// handleLoaded, kicked by mainLoadCompleted. Keyed by Tiltfile CR name.
 	heldWorktrees map[types.NamespacedName]bool
 
+	// Worktree runs whose START is parked because the main run hasn't
+	// settled: the gate in Reconcile defers startRunAsync until
+	// mainSettled, because Tiltfile execution has process-global side
+	// effects — the loader records the main run's authored serve ports in
+	// the port registry at load time — and a worktree load racing the main
+	// load can claim an authored port before main reserves it. Distinct
+	// from heldWorktrees: those runs already executed and hold a parked
+	// result; gated ones must not execute at all.
+	gatedStarts map[types.NamespacedName]bool
+
 	// Set by tests that exercise worktree runs without a main run, disabling
 	// the hold-until-main gate (mainSettled).
 	skippedHold bool
@@ -108,6 +118,7 @@ func NewReconciler(
 		indexer:              indexer.NewIndexer(scheme, indexTiltfile),
 		runs:                 make(map[types.NamespacedName]*runStatus),
 		heldWorktrees:        make(map[types.NamespacedName]bool),
+		gatedStarts:          make(map[types.NamespacedName]bool),
 		requeuer:             indexer.NewRequeuer(),
 		engineMode:           engineMode,
 		k8sContextOverride:   k8sContextOverride,
@@ -183,6 +194,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 
 		be := r.needsBuild(ctx, nn, &tf, run, fws, queue, lastRestartEventTime)
 		if be != nil {
+			// Worktree loads must not execute before the main run settles:
+			// the loader registers the main run's authored serve ports in
+			// the port registry during execution, so a worktree load racing
+			// the main load can claim an authored port before main
+			// reserves it — both processes then bind the same port. Park
+			// the START (unlike heldWorktrees, the load must not run at
+			// all); mainLoadCompleted kicks it when the main run's turn
+			// completes. Reload generations serialize too: a reloading
+			// main run flips back off mainSettled, so worktree reloads
+			// wait out the main run's re-reservations.
+			if wt := worktreeNameOf(&tf); wt != "" && !r.mainSettled(ctx) {
+				r.gatedStarts[nn] = true
+				logger.Get(ctx).Infof("Waiting for the main Tiltfile to load before starting worktree %q", wt)
+				return ctrl.Result{}, nil
+			}
+			delete(r.gatedStarts, nn)
 			r.startRunAsync(ctx, nn, &tf, be, run)
 		}
 	}
@@ -578,13 +605,18 @@ func (r *Reconciler) applyWorktreeBoundary(
 	return nil
 }
 
-// mainLoadCompleted kicks worktree runs that finished their load before the
-// main run did: their results were parked (handleLoaded) and are now
-// replayable against the main run's manifests.
+// mainLoadCompleted kicks worktree runs that started (or whose loads
+// finished) before the main run completed its own load: gated starts are
+// requeued so their reconcile re-tests the gate and starts the run; parked
+// results (heldWorktrees) are requeued for replay against the main run's
+// manifests.
 //
 // Callers must hold r.mu (Reconcile holds it for the whole call).
 func (r *Reconciler) mainLoadCompleted() {
 	for nn := range r.heldWorktrees {
+		r.requeuer.Add(nn)
+	}
+	for nn := range r.gatedStarts {
 		r.requeuer.Add(nn)
 	}
 }
@@ -637,6 +669,7 @@ func (r *Reconciler) mainSettled(ctx context.Context) bool {
 
 // Cancel execution of a running tiltfile and delete all record of it.
 func (r *Reconciler) deleteExistingRun(nn types.NamespacedName) {
+	delete(r.gatedStarts, nn)
 	run, ok := r.runs[nn]
 	if !ok {
 		return
