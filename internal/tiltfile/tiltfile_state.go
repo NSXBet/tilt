@@ -835,6 +835,9 @@ func (s *tiltfileState) assembleK8s() error {
 			}
 			r.resourceDeps = append(r.resourceDeps, opts.resourceDeps...)
 			r.links = append(r.links, opts.links...)
+			if opts.worktreeInherit {
+				r.worktreeInherit = true
+			}
 			for k, v := range opts.labels {
 				r.labels[k] = v
 			}
@@ -887,6 +890,16 @@ func (s *tiltfileState) assembleK8s() error {
 				s.addEntityToResourceAndRemoveFromUnresourced(entitiesToRemove[0], r)
 			}
 
+		} else if opts.worktreeInherit {
+			// worktree=True (worktree/stub): the workload YAML is main-run
+			// only (unflagged k8s_yaml skipped in this run), so the resource
+			// name is unknown here. Instantiate a zero-entity stub; the
+			// engine's boundary pass fills it from main's manifest.
+			r, err := s.makeK8sResource(opts.workload)
+			if err != nil {
+				return err
+			}
+			r.worktreeInherit = true
 		} else {
 			var knownResources []string
 			for name := range s.k8sByName {
@@ -1054,8 +1067,21 @@ func (s *tiltfileState) assembleK8sUnresourced() error {
 }
 
 func (s *tiltfileState) validateK8s(r *k8sResource) error {
-	if len(r.entities) == 0 && r.customDeploy == nil {
+	if len(r.entities) == 0 && r.customDeploy == nil && !r.worktreeInherit {
 		return fmt.Errorf("resource %q: could not associate any k8s_yaml() or k8s_custom_deploy() with this resource", r.name)
+	}
+
+	// Worktree stub (worktree/stub): this run skipped the YAML producer
+	// (worktree=True helm/k8s_yaml), so there is nothing to scan for image
+	// refs. The run's own builds must still deploy into the per-worktree
+	// instance, so the stub claims them all: the boundary pass fills the YAML
+	// from main's copy, and the applier injects each claimed image map into
+	// that YAML by image-name match — a claimed map not referenced by the
+	// YAML simply never injects, so over-claiming is safe.
+	if r.worktreeInherit && len(r.entities) == 0 {
+		for _, builder := range s.buildIndex.images {
+			r.imageMapDeps = append(r.imageMapDeps, builder.ImageMapName())
+		}
 	}
 
 	for _, ref := range r.imageRefs {

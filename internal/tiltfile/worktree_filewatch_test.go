@@ -84,7 +84,7 @@ func TestWorktreeFileWatch_WorktreeRunTiltignoreRootedAtWorktree(t *testing.T) {
 func TestWorktreeFileWatch_WorktreeRunWatchedPathsInsideWorktree(t *testing.T) {
 	f := newFixture(t)
 	f.file("Tiltfile", `
-local_resource("x", "true", deps=["web"])
+local_resource("x", "true", deps=["web"], worktree=True)
 `)
 
 	tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)
@@ -112,7 +112,7 @@ local_resource("x", "true", deps=["web"])
 func TestWorktreeFileWatch_LocalResourceIgnoreRootedAtWorktree(t *testing.T) {
 	f := newFixture(t)
 	f.file("Tiltfile", `
-local_resource("x", "true", deps=["web"], ignore=["logs"])
+local_resource("x", "true", deps=["web"], ignore=["logs"], worktree=True)
 `)
 
 	tf := ctrltiltfile.MainTiltfile(f.JoinPath("Tiltfile"), nil)

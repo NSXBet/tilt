@@ -27,14 +27,15 @@ type RunResult struct {
 //     per-run loader usually rejects this first (checkResourceConflict,
 //     local_resource.go:142); the pass must stand on its own over assembled
 //     results.
-//   - Each run's manifests are engine-prefixed (§4.3): a name defined by the
-//     main run stays bare — the shared resource flows through the run and
-//     the worktree's definition wins (§3): it replaces main's copy in the
-//     combined set rather than appending a duplicate; two different
-//     worktrees both redefining the same shared name is a double-define
-//     error. Everything else becomes the clone `wt:<name>/<name>`; two
-//     worktrees defining the same clone name stay distinct, not a
-//     double-define.
+//   - Each run's manifests become clones `wt:<name>_<name>` (§4.3): under
+//     the binary worktree=True flag (§2), unflagged definitions are skipped
+//     in worktree runs and flagged ones are per-worktree instances, so a run
+//     never redefines a bare name — clones from different worktrees always
+//     stay distinct, not a double-define.
+//   - A clone whose k8s deploy target has no YAML of its own is the stub the
+//     loader instantiated for a worktree=True resource whose YAML producer
+//     was skipped in this run (worktree/stub); it inherits main's copy's
+//     YAML and image locators (fillStub).
 //   - Every dependency must resolve to a manifest defined by the main run or
 //     by the depending run's own worktree (§4.3: "same-worktree first, else
 //     main-defined"); anything else is a load error — including a dep on a
@@ -80,7 +81,6 @@ func Combine(main []model.Manifest, runs []RunResult) ([]model.Manifest, error) 
 	rawName := make(map[model.ManifestName]model.ManifestName)
 	rawDeps := make(map[model.ManifestName][]model.ManifestName)
 	rawRun := make(map[model.ManifestName]string)
-	sharedOwner := make(map[model.ManifestName]string)
 
 	combined := make([]model.Manifest, 0, len(main))
 	combined = append(combined, main...)
@@ -100,22 +100,24 @@ func Combine(main []model.Manifest, runs []RunResult) ([]model.Manifest, error) 
 		}
 		prefixed := applyPrefix(run.Manifests, run.Name, wtOwned)
 		for i, m := range prefixed {
-			if isCloneName(m.Name) {
-				if defined[m.Name] {
-					return nil, fmt.Errorf("clone name %q (worktree %q) collides with an existing manifest", m.Name, run.Name)
-				}
-				combined = append(combined, m)
-			} else {
-				// Bare name: the shared (main-defined) manifest flowing
-				// through this run (applyPrefix keeps only wtOwned members
-				// bare). The worktree's definition wins (§3): it replaces
-				// main's copy instead of appending a duplicate.
-				if owner, ok := sharedOwner[m.Name]; ok {
-					return nil, fmt.Errorf("shared manifest %q defined twice: worktrees %q and %q both redefine it", m.Name, owner, run.Name)
-				}
-				combined[mainIdx[m.Name]] = m
-				sharedOwner[m.Name] = run.Name
+			if defined[m.Name] {
+				return nil, fmt.Errorf("clone name %q (worktree %q) collides with an existing manifest", m.Name, run.Name)
 			}
+			// Stub inheritance (worktree/stub): a clone whose k8s deploy
+			// target has neither YAML nor an apply command is the stub the
+			// loader instantiated for a worktree=True resource whose YAML
+			// producer was skipped in this run. It inherits main's copy's
+			// YAML and image locators — those only. The clone keeps its own
+			// worktree stamp, port forwards, links, and image maps: the
+			// inherited YAML references images by name, and this run's own
+			// builds inject wherever it matches, so the clone deploys this
+			// worktree's builds, not main's.
+			if main != nil {
+				if raw := run.Manifests[i]; defined[raw.Name] {
+					m = fillStub(m, main[mainIdx[raw.Name]])
+				}
+			}
+			combined = append(combined, m)
 			defined[m.Name] = true
 			raw := run.Manifests[i]
 			rawName[m.Name] = raw.Name
@@ -172,7 +174,29 @@ func Combine(main []model.Manifest, runs []RunResult) ([]model.Manifest, error) 
 }
 
 // isCloneName reports whether name carries the worktree clone prefix
-// (`wt:<worktree>/<name>`, prefix.go).
+// (`wt:<worktree>_<name>`, prefix.go).
 func isCloneName(name model.ManifestName) bool {
 	return IsCloneName(name)
+}
+
+// fillStub completes a worktree stub from main's manifest of the same
+// bare name (worktree/stub). The stub is a k8s resource the loader
+// instantiated for worktree=True when this run skipped the YAML producer
+// (helm/k8s_yaml); it deploys nothing until filled here.
+//
+// Only main's YAML and image locators are inherited — everything else stays
+// the clone's: the worktree stamp and port forwards (loader-side), links,
+// labels, and this run's image maps. The inherited YAML references images
+// by name, and this run's builds inject wherever they match, so the clone
+// deploys this worktree's builds; extra image maps only inject where the
+// YAML actually references them.
+func fillStub(m model.Manifest, main model.Manifest) model.Manifest {
+	if !m.IsK8s() || !main.IsK8s() {
+		return m
+	}
+	clone := m.K8sTarget()
+	src := main.K8sTarget()
+	clone.YAML = src.YAML
+	clone.ImageLocators = src.ImageLocators
+	return m.WithDeployTarget(clone)
 }

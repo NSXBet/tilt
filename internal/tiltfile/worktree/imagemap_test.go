@@ -124,11 +124,10 @@ func TestApplyBoundary_ImageMapIdentityScoped(t *testing.T) {
 		"ImageMap identity must be worktree-scoped")
 }
 
-// Shared LOCAL manifests flowing through the run keep the bare selector:
-// they are main's resources, not clones. k8s/DC same-name manifests are the
-// worktree's own clones (TestApplyBoundary_K8sSharedNameBecomesClone), so
-// only local shapes keep bare identity.
-func TestApplyBoundary_SharedImageMapStaysBare(t *testing.T) {
+// A shared (main-defined) name flowing through the run becomes that
+// worktree's clone, so its ImageMap identity scopes to the worktree like any
+// clone's — locals included (TestApplyBoundary_K8sSharedNameBecomesClone).
+func TestApplyBoundary_SharedImageMapClonesWithScopedIdentity(t *testing.T) {
 	shared := localMd("postgres")
 	iTarget := model.ImageTarget{}
 	iTarget.ImageMapSpec.Selector = "registry.example.com/postgres"
@@ -144,9 +143,9 @@ func TestApplyBoundary_SharedImageMapStaysBare(t *testing.T) {
 	require.NoError(t, err)
 
 	m := out.Manifests[0]
-	require.Equal(t, model.ManifestName("postgres"), m.Name)
-	require.Equal(t, "registry.example.com/postgres", m.ImageTargets[0].ImageMapSpec.Selector,
-		"shared local manifest's ImageMap selector stays bare")
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), m.Name)
+	require.Equal(t, "registry.example.com/postgres-wt-feat-auth", m.ImageTargets[0].ImageMapSpec.Selector,
+		"clone's ImageMap selector is scoped to the worktree")
 }
 
 // Two worktrees building the same Dockerfile: distinct ImageMap identities
@@ -284,36 +283,33 @@ func TestApplyBoundary_CloneDCDeployImageMapsScoped(t *testing.T) {
 }
 
 // BREAK B regression (validator repro TestReproSharedRedefinitionDepsError):
-// a shared (bare-named) redefinition carrying multi-stage deps must pass
-// through with bare identity — the deps block is clone-gated like the
+// a multi-stage redefinition of a main-defined name becomes a clone, and its
+// dep graph re-scopes with it — the deps block is clone-gated like the
 // selector block.
-func TestApplyBoundary_SharedRedefinitionDepsStaysBare(t *testing.T) {
-	// The shared redefinition's dep graph points at MAIN's base-image
-	// ImageMap (bare). Main keeps its bare identity (it is not a clone),
-	// and the graph is per-manifest — so the run's manifest must carry the
-	// base target alongside the dependent one, exactly as the loader
-	// (imgTargetsForDepsHelper) assembles a multi-stage resource.
+func TestApplyBoundary_SharedRedefinitionClonesWithScopedDeps(t *testing.T) {
+	// The loader (imgTargetsForDepsHelper) puts a multi-stage resource's base
+	// image target AND the dependent target in the SAME manifest — the graph
+	// is per-manifest, so the base target must be present for
+	// InferLiveUpdateSelectors to resolve. As a clone, both targets scope to
+	// the worktree (own cache lineage), and the dependent's ImageMap dep
+	// points at the scoped base, never main's.
 	main := []model.Manifest{boundaryMd("postgres")}
 	out, err := ApplyBoundary(main, RunResult{
 		Name: "feat-auth",
 		Manifests: []model.Manifest{
-			// The loader (imgTargetsForDepsHelper) puts a multi-stage
-			// resource's base image target AND the dependent target in the
-			// SAME manifest — the graph is per-manifest, so the base target
-			// must be present for InferLiveUpdateSelectors to resolve.
 			multiStageMd("postgres", "registry.example.com/base"),
 		},
 	})
 	require.NoError(t, err)
 
 	m := out.Manifests[0]
-	require.Equal(t, model.ManifestName("postgres"), m.Name)
-	require.Equal(t, "registry.example.com/base", m.ImageTargets[0].ImageMapSpec.Selector,
-		"base target in the shared redefinition stays bare")
-	require.Equal(t, "registry.example.com/postgres", m.ImageTargets[1].ImageMapSpec.Selector,
-		"dependent target in the shared redefinition stays bare")
-	require.Equal(t, []string{bareImageMapName("registry.example.com/base")}, m.ImageTargets[1].ImageMapDeps(),
-		"shared redefinition's ImageMap deps stay bare")
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), m.Name)
+	require.Equal(t, "registry.example.com/base-wt-feat-auth", m.ImageTargets[0].ImageMapSpec.Selector,
+		"base target of the multi-stage clone scopes to the worktree")
+	require.Equal(t, "registry.example.com/postgres-wt-feat-auth", m.ImageTargets[1].ImageMapSpec.Selector,
+		"dependent target of the multi-stage clone scopes to the worktree")
+	require.Equal(t, []string{"registry.example.com_base-wt-feat-auth"}, m.ImageTargets[1].ImageMapDeps(),
+		"multi-stage clone's ImageMap deps point at the scoped base")
 }
 
 // multiStageMd is the multi-stage shape the loader produces for a manifest

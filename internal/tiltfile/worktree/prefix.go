@@ -22,9 +22,14 @@ const (
 )
 
 // applyPrefix rewrites manifests from a worktree run at the engine boundary
-// (plan §4.3): names get the engine-internal prefix `wt:<worktree>/<name>`;
-// author-visible names stay bare. Deps resolve same-worktree first (rewritten
-// to the clone name), else main-defined (stay bare).
+// (plan §4.3): every manifest becomes a clone `wt:<worktree>_<name>` — the
+// bare engine namespace holds only main-run manifests. Under the binary
+// worktree=True flag (plan §2), unflagged definitions are skipped in worktree
+// runs and flagged ones are per-worktree instances, so nothing from a run
+// ever redefines a bare name.
+//
+// Deps resolve same-worktree first (rewritten to the clone name), else
+// main-defined (stay bare).
 //
 // Undefined deps stay bare ONLY when wtOwned is nil (no main-run result
 // available to resolve against; the pass does not invent names and the
@@ -33,12 +38,9 @@ const (
 // to `wt:<name>/<missing>` — the loader then errors on the unknown clone.
 //
 // wtOwned is the set of main-defined (shared) manifest names, from the main
-// run's TiltfileLoadResult. A worktree-run manifest whose bare name is in
-// wtOwned IS the shared manifest flowing through this run: it keeps its bare
-// engine name and records a self-reference dep so the shared resource is
-// pinned as a dependency of this run. Deps resolve by the same membership:
-// inside wtOwned → shared, stays bare; outside → this worktree's own clone,
-// rewritten to the prefixed name.
+// run's TiltfileLoadResult; deps resolve by membership: inside wtOwned →
+// shared, stays bare; outside → this worktree's own clone, rewritten to the
+// prefixed name.
 //
 // A nil wtOwned means no main-run result is available to resolve against:
 // names are still prefixed, but deps are left untouched rather than guessed.
@@ -72,37 +74,22 @@ func applyPrefix(manifests []model.Manifest, name string, wtOwned map[model.Mani
 				m.ResourceDependencies[i] = ManifestName(name, string(dep))
 			}
 		}
-		if wtOwned[m.Name] && !(m.IsK8s() || m.IsDC()) {
-			// The shared manifest itself, flowing through this run: keep the
-			// bare engine name and pin it as a dep of this run. Shared
-			// redefinition (plan §3 "the worktree's definition wins") is the
-			// local_resource shared-hack model; k8s/DC manifests are excluded —
-			// a worktree run's k8s/DC workload is always ITS OWN instantiation
-			// (plan §4.1/§4.2 additive siblings): bare, it would collide with
-			// the main run's apiserver objects (KubernetesApply/DockerCompose
-			// CRs are keyed by manifest name) instead of clone-stamping into
-			// -wt-<worktree> siblings.
-			if !containsName(m.ResourceDependencies, m.Name) {
-				m.ResourceDependencies = append(m.ResourceDependencies, m.Name)
-			}
-		} else {
-			m.Name = ManifestName(name, string(m.Name))
-			// Stamp the worktree label (plan §4.2): the gateway host-router
-			// (isWorktreeManifest), the endpoint-link gateway URLs
-			// (withGatewayEndpointLinks) and the TUI/web worktree grouping
-			// all resolve a manifest's worktree from this label.
-			if m.Labels == nil {
-				m.Labels = make(map[string]string, 1)
-			}
-			m.Labels[v1alpha1.LabelWorktree] = name
+		m.Name = ManifestName(name, string(m.Name))
+		// Stamp the worktree label (plan §4.2): the gateway host-router
+		// (isWorktreeManifest), the endpoint-link gateway URLs
+		// (withGatewayEndpointLinks) and the TUI/web worktree grouping
+		// all resolve a manifest's worktree from this label.
+		if m.Labels == nil {
+			m.Labels = make(map[string]string, 1)
 		}
+		m.Labels[v1alpha1.LabelWorktree] = name
 		out = append(out, m)
 	}
 	return out
 }
 
 // RewriteRun rewrites one worktree run's manifests at the engine boundary
-// (plan §4.3): names become the clone `wt:<worktree>/<name>`, deps resolve
+// (plan §4.3): names become the clone `wt:<worktree>_<name>`, deps resolve
 // same-worktree first, else main-defined (shared, stays bare), and each
 // manifest records its producing Tiltfile (`tiltfile:<worktree>`).
 //
@@ -130,19 +117,10 @@ func ManifestName(worktree, name string) model.ManifestName {
 }
 
 // IsCloneName reports whether name carries the worktree clone prefix
-// (`wt:<worktree>/<name>`). Exported for the engine boundary: the loader
+// (`wt:<worktree>_<name>`). Exported for the engine boundary: the loader
 // stamps worktree-run manifests' specs with the worktree name (e.g.
 // KubernetesApplySpec.Worktree) and the configs reconciler labels
 // engine-side objects, keyed off this prefix.
 func IsCloneName(name model.ManifestName) bool {
 	return strings.HasPrefix(string(name), namePrefix)
-}
-
-func containsName(names []model.ManifestName, name model.ManifestName) bool {
-	for _, n := range names {
-		if n == name {
-			return true
-		}
-	}
-	return false
 }

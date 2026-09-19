@@ -107,10 +107,11 @@ func TestApplyBoundary_K8sSharedNameBecomesClone(t *testing.T) {
 	require.Equal(t, "feat-auth", m.K8sTarget().KubernetesApplySpec.Worktree)
 }
 
-// Shared manifest flowing through the run: LOCAL manifests keep the bare
-// engine name (the worktree's definition wins, plan §3 shared-hack) and
-// their derived names stay bare too.
-func TestApplyBoundary_SharedManifestStaysBare(t *testing.T) {
+// A shared (main-defined) name flowing through the run becomes that
+// worktree's clone — locals included (binary worktree=True flag, plan §2:
+// unflagged definitions are skipped in worktree runs, so every run
+// definition is a per-worktree instance).
+func TestApplyBoundary_SharedLocalNameBecomesClone(t *testing.T) {
 	main := []model.Manifest{localMd("postgres")}
 	out, err := ApplyBoundary(main, RunResult{
 		Name:      "feat-auth",
@@ -119,8 +120,8 @@ func TestApplyBoundary_SharedManifestStaysBare(t *testing.T) {
 	require.NoError(t, err)
 
 	m := out.Manifests[0]
-	require.Equal(t, []model.ManifestName{"postgres"}, out.Defined)
-	require.Equal(t, model.ManifestName("postgres"), m.Name)
+	require.Equal(t, []model.ManifestName{"wt:feat-auth_postgres"}, out.Defined)
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), m.Name)
 }
 
 // Derived names: a clone's DockerImage/LiveUpdate object names re-stamp with

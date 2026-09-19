@@ -21,11 +21,13 @@ func TestApplyPrefix_ManifestAndDeps(t *testing.T) {
 	out := applyPrefix([]model.Manifest{{Name: "postgres"}, res}, "feat-auth", map[model.ManifestName]bool{"postgres": true})
 
 	require.Equal(t, model.ManifestName("wt:feat-auth_incidents-admin"), out[1].Name)
-	// "api" is worktree-owned (in wtOwned) → rewritten to the clone name
+	// "api" is not main-defined → rewritten to the clone name
+	// (same-worktree first)
 	require.Equal(t, []model.ManifestName{"wt:feat-auth_api"}, out[1].ResourceDependencies)
-	// "postgres" is main-defined (shared) → dep stays bare
-	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
-	require.Equal(t, []model.ManifestName{"postgres"}, out[0].ResourceDependencies)
+	// The main-defined postgres manifest itself becomes this run's clone
+	// (plan §4.3); its deps stay untouched (none here).
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), out[0].Name)
+	require.Nil(t, out[0].ResourceDependencies)
 }
 
 // A worktree-run manifest named identically to a main-defined manifest is a
@@ -56,22 +58,23 @@ func TestApplyPrefix_UndefinedDepStaysBare(t *testing.T) {
 }
 
 // The shared (main-defined) manifest itself flowing through a worktree run:
-// it keeps its bare engine name and gains a self-reference dep pinning the
-// shared resource as a dependency of this run (plan §4.3 wtOwned branch).
-// Its own deps resolve by wtOwned membership like any other manifest.
-func TestApplyPrefix_SharedManifestKeepsBareNameWithSelfDep(t *testing.T) {
+// it becomes this run's clone (plan §4.3) and no dep on main's shared copy
+// is invented. Its own deps resolve by wtOwned membership like any other
+// manifest.
+func TestApplyPrefix_SharedManifestClonesWithoutSelfDep(t *testing.T) {
 	// "postgres" is defined by the main run; the worktree run also produces it.
 	m := model.Manifest{Name: "postgres"}
 	m.ResourceDependencies = []model.ManifestName{"api"}
 	out := applyPrefix([]model.Manifest{m}, "feat-auth", map[model.ManifestName]bool{"postgres": true})
-	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), out[0].Name)
 	// "api" is not main-defined -> rewritten to this worktree's clone name.
-	require.Equal(t, []model.ManifestName{"wt:feat-auth_api", "postgres"}, out[0].ResourceDependencies)
+	require.Equal(t, []model.ManifestName{"wt:feat-auth_api"}, out[0].ResourceDependencies)
 
-	// Self-dep already present is not duplicated.
+	// A pre-existing dep on the shared name stays bare (main-defined).
 	m2 := model.Manifest{Name: "postgres"}
 	m2.ResourceDependencies = []model.ManifestName{"postgres"}
 	out2 := applyPrefix([]model.Manifest{m2}, "feat-auth", map[model.ManifestName]bool{"postgres": true})
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), out2[0].Name)
 	require.Equal(t, []model.ManifestName{"postgres"}, out2[0].ResourceDependencies)
 }
 

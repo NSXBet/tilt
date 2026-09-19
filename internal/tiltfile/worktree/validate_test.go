@@ -77,61 +77,44 @@ func TestCombine_SameNameAcrossWorktreesDistinctClones(t *testing.T) {
 	require.Contains(t, names, model.ManifestName("wt:fix-ui_api"))
 }
 
-// A worktree's definition of a main-defined resource wins: the shared
-// manifest keeps its bare engine name and flows through the run (plan §3),
-// exactly once — not duplicated next to main's copy.
-func TestCombine_WorktreeDefinitionWins(t *testing.T) {
+// A worktree's definition of a main-defined name becomes that worktree's
+// clone (plan §4.3, binary worktree=True flag §2): main's bare copy flows
+// through untouched — no bare-winner replacement, no dedup.
+func TestCombine_WorktreeDefinitionClones(t *testing.T) {
 	out, err := Combine(
-		[]model.Manifest{md("api", "postgres")},
-		[]RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("api")}}},
+		[]model.Manifest{md("api", "postgres"), md("postgres")},
+		[]RunResult{{Name: "feat-auth", Manifests: []model.Manifest{md("api", "postgres")}}},
 	)
 	require.NoError(t, err)
-	var count int
-	for _, m := range out {
-		if m.Name == "api" {
-			count++
-		}
-	}
-	require.Equal(t, 1, count, "shared manifest appears once")
+
+	// Main's copies stay bare with their own deps; the run's copy is a
+	// clone whose dep on main-defined postgres stays bare.
+	require.Equal(t, model.ManifestName("api"), out[0].Name)
+	require.Equal(t, []model.ManifestName{"postgres"}, out[0].ResourceDependencies)
+	require.Equal(t, model.ManifestName("postgres"), out[1].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out[2].Name)
+	require.Equal(t, []model.ManifestName{"postgres"}, out[2].ResourceDependencies)
 }
 
-// Rule 1's error arm (plan §3): the worktree's definition of a main-defined
-// resource wins — but only ONE worktree may redefine a shared name. Two
-// worktrees both redefining it is a double-define: the engine cannot pick
-// which definition the shared bare name carries.
-func TestCombine_SharedRedefinedByTwoWorktrees(t *testing.T) {
-	_, err := Combine(
-		[]model.Manifest{md("api", "postgres")},
-		[]RunResult{
-			{Name: "feat-auth", Manifests: []model.Manifest{md("api")}},
-			{Name: "fix-ui", Manifests: []model.Manifest{md("api")}},
-		},
-	)
-	require.ErrorContains(t, err, `shared manifest "api" defined twice: worktrees "feat-auth" and "fix-ui" both redefine it`)
-}
-
-// Composition of rule 1: one worktree redefines the shared resource, another
-// merely depends on it. The redefining worktree's copy wins the bare name
-// (main's slot), and the dependent worktree's dep stays bare — it resolves
-// to the winner, not to a clone.
-func TestCombine_SharedRedefinedWinnerFeedsOtherWorktrees(t *testing.T) {
+// A worktree depending on a name another worktree also defines resolves to
+// MAIN's shared copy (bare) — never another worktree's clone (plan §4.3:
+// same-worktree first, else main-defined).
+func TestCombine_CrossWorktreeDepResolvesToMain(t *testing.T) {
 	out, err := Combine(
-		[]model.Manifest{md("api", "postgres")},
+		[]model.Manifest{md("api", "postgres"), md("postgres")},
 		[]RunResult{
-			{Name: "feat-auth", Manifests: []model.Manifest{md("api", "web"), md("web")}},
+			{Name: "feat-auth", Manifests: []model.Manifest{md("api", "postgres")}},
 			{Name: "fix-ui", Manifests: []model.Manifest{md("frontend", "api")}},
 		},
 	)
 	require.NoError(t, err)
 
-	// The winner replaces main's copy under the bare engine name; its own
-	// deps rewrite to its clones and it gains the self-reference dep.
+	// Both worktrees' api instances exist side by side; main's stays bare
+	// and feeds fix-ui's dep.
 	require.Equal(t, model.ManifestName("api"), out[0].Name)
-	require.Equal(t,
-		[]model.ManifestName{"wt:feat-auth_web", "api"},
-		out[0].ResourceDependencies)
-	require.Equal(t, model.ManifestName("wt:fix-ui_frontend"), out[2].Name)
-	require.Equal(t, []model.ManifestName{"api"}, out[2].ResourceDependencies)
+	require.Equal(t, model.ManifestName("wt:feat-auth_api"), out[2].Name)
+	require.Equal(t, model.ManifestName("wt:fix-ui_frontend"), out[3].Name)
+	require.Equal(t, []model.ManifestName{"api"}, out[3].ResourceDependencies)
 }
 
 // A worktree-run manifest whose clone name collides with an existing

@@ -213,6 +213,15 @@ func (s *tiltfileState) helm(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	localPath := path.Value
+
+	// worktree=True (plan §2): worktree runs do not render charts — helm
+	// output is main-run YAML. Returning None (not a blob) gives unflagged
+	// k8s_yaml a clean no-op instead of a spurious empty-render error; the
+	// engine's boundary pass reuses main's rendered output in this run.
+	if s.worktree != "" {
+		return starlark.None, nil
+	}
+
 	info, err := os.Stat(localPath)
 	if err != nil {
 		if os.IsNotExist(err) {

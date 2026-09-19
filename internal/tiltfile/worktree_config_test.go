@@ -81,7 +81,7 @@ local_resource("x", "true")
 func TestWorktreeConfig_K8sApplySpecStampedWithWorktree(t *testing.T) {
 	f := newFixture(t)
 	f.file("Tiltfile", `
-k8s_yaml('sancho.yaml')
+k8s_yaml('sancho.yaml', worktree=True)
 `)
 	f.file("sancho.yaml", testyaml.SanchoYAML)
 	// Path re-rooting (plan §0 amendment) makes the worktree run resolve

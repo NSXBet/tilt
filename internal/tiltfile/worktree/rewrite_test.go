@@ -26,9 +26,9 @@ func TestRewriteRun_MainResult_ResolvedDepsAndSource(t *testing.T) {
 	require.Equal(t, []model.ManifestName{"postgres", "wt:feat-auth_web"}, out[0].ResourceDependencies)
 }
 
-func TestRewriteRun_SharedManifestStaysBare(t *testing.T) {
+func TestRewriteRun_SharedManifestClones(t *testing.T) {
 	out := RewriteRun([]model.Manifest{md("postgres")}, "feat-auth", []model.Manifest{md("postgres")})
-	require.Equal(t, model.ManifestName("postgres"), out[0].Name)
+	require.Equal(t, model.ManifestName("wt:feat-auth_postgres"), out[0].Name)
 }
 
 func TestRewriteRun_EmptyWorktreeIsNoop(t *testing.T) {

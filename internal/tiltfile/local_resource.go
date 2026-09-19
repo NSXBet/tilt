@@ -67,7 +67,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 	var readinessProbe probe.Probe
 	var updateCmdDirVal, serveCmdDirVal starlark.Value
 	var servePortVal value.Int32
-	var scopeVal value.Stringable
+	var worktreeFlag bool
 
 	deps := value.NewLocalPathListUnpacker(thread)
 
@@ -103,7 +103,7 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		"dir?", &updateCmdDirVal,
 		"serve_dir?", &serveCmdDirVal,
 		"serve_port?", &servePortVal,
-		"scope?", &scopeVal,
+		"worktree?", &worktreeFlag,
 	); err != nil {
 		return nil, err
 	}
@@ -154,17 +154,11 @@ func (s *tiltfileState) localResource(thread *starlark.Thread, fn *starlark.Buil
 		probeSpec = nil
 	}
 
-	// Scope declaration (plan §3): a resource instantiates only in the runs
-	// its scope names. Branch-local resources never exist in the main run,
-	// and main-owned resources are never re-instantiated by worktree runs —
-	// the Tiltfile stays branch-free. Validated before the drop so a
-	// malformed call errors identically in every run.
-	scope, err := parseScope(fn.Name(), scopeVal.Value)
-	if err != nil {
-		return nil, err
-	}
-	if !scopeInstantiates(scope, s.worktree) {
-		s.skipScope("local_resource", name.String(), scope)
+	// worktree=True (plan §2): a flagged resource instantiates in every run
+	// (branch-local servers per worktree); an unflagged one is main-run only —
+	// worktree runs skip it entirely. The Tiltfile stays branch-free.
+	if s.worktree != "" && !worktreeFlag {
+		s.logger.Verbosef("local_resource %q: main-run only, skipped in worktree %q", name.String(), s.worktree)
 		return starlark.None, nil
 	}
 

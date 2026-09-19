@@ -70,6 +70,11 @@ type k8sResource struct {
 
 	labels map[string]string
 
+	// worktree=True: in a worktree run, a zero-entity resource is a stub
+	// waiting for the boundary pass to fill it from main's manifest, not a
+	// grouping error (worktree/stub).
+	worktreeInherit bool
+
 	customDeploy *k8sCustomDeploy
 }
 
@@ -88,8 +93,13 @@ type k8sResourceOptions struct {
 	manuallyGrouped   bool
 	podReadinessMode  model.PodReadinessMode
 	discoveryStrategy v1alpha1.KubernetesDiscoveryStrategy
-	links             []model.Link
-	labels            map[string]string
+	links []model.Link
+	labels map[string]string
+
+	// worktree=True: this resource instantiates in every run; in a worktree
+	// run whose workload YAML skipped (unflagged k8s_yaml), the resource is
+	// a zero-entity stub the boundary pass fills from main's manifest.
+	worktreeInherit bool
 }
 
 // Count image injection for analytics.
@@ -142,29 +152,21 @@ func (r *k8sResource) addEntities(entities []k8s.K8sEntity,
 func (s *tiltfileState) k8sYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var yamlValue starlark.Value
 	var allowDuplicates bool
-	var scopeVal value.Stringable
+	var worktreeFlag bool
 
 	if err := s.unpackArgs(fn.Name(), args, kwargs,
 		"yaml", &yamlValue,
 		"allow_duplicates?", &allowDuplicates,
-		"scope?", &scopeVal,
+		"worktree?", &worktreeFlag,
 	); err != nil {
 		return nil, err
 	}
 
-	// Scope declaration (plan §3): manifests instantiate only in the runs
-	// their scope names — e.g. main-scoped shared foundation (a Secret, a
-	// database) drops out of every worktree run, while scope-less chart
-	// output re-instantiates everywhere and gets clone-stamped in worktree
-	// runs. Validated before the drop so a malformed scope errors identically
-	// in every run. Note the producers (local/helm/kustomize blobs) still
-	// render in every run; only the ingestion is scoped.
-	scope, err := parseScope(fn.Name(), scopeVal.Value)
-	if err != nil {
-		return nil, err
-	}
-	if !scopeInstantiates(scope, s.worktree) {
-		s.skipScope(fn.Name(), "", scope)
+	// worktree=True (plan §2): unflagged YAML is main-run only — worktree
+	// runs skip the whole ingestion. A `worktree=True` resource in a
+	// worktree run whose YAML was skipped here gets a zero-entity stub;
+	// the boundary pass fills it from main's manifest (worktree/stub).
+	if s.worktree != "" && !worktreeFlag {
 		return starlark.None, nil
 	}
 
@@ -192,7 +194,10 @@ func (s *tiltfileState) k8sYaml(thread *starlark.Thread, fn *starlark.Builtin, a
 
 		s.k8sUnresourced = append(s.k8sUnresourced, entities...)
 
-	} else {
+	} else if yamlValue != nil {
+		// Explicit empty input (None, empty string, empty list) is an
+		// error. A skipped producer never reaches here: unflagged
+		// helm/k8s_yaml calls return at the worktree gate above.
 		return nil, emptyYAMLError
 	}
 
@@ -324,7 +329,7 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 	var autoInit = value.Optional[starlark.Bool]{Value: true}
 	var labels value.LabelSet
 	var discoveryStrategy tiltfile_k8s.DiscoveryStrategy
-	var scopeVal value.Stringable
+	var worktreeFlag bool
 
 	if err := s.unpackArgs(fn.Name(), args, kwargs,
 		"workload?", &workload,
@@ -339,27 +344,17 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 		"links?", &links,
 		"labels?", &labels,
 		"discovery_strategy?", &discoveryStrategy,
-		"scope?", &scopeVal,
+		"worktree?", &worktreeFlag,
 	); err != nil {
 		return nil, err
 	}
 
-	// Scope declaration (plan §3): the grouping/forward call instantiates
-	// only in the runs its scope names. A main-scoped resource's workload is
-	// scope-dropped from worktree runs, so its k8s_resource call must drop
-	// too — otherwise it fails at assembly with "specified unknown resource".
-	// Validated before the drop so a malformed scope errors identically in
-	// every run.
-	scope, err := parseScope(fn.Name(), scopeVal.Value)
-	if err != nil {
-		return nil, err
-	}
-	if !scopeInstantiates(scope, s.worktree) {
-		groupedName := workload.String()
-		if groupedName == "" {
-			groupedName = newName.String()
-		}
-		s.skipScope(fn.Name(), groupedName, scope)
+	// worktree=True (plan §2): unflagged calls are main-run only — a
+	// worktree run skips them entirely. Flagged calls execute in every
+	// run; in a worktree run whose YAML skipped the workload (unflagged
+	// k8s_yaml), the resource is recorded as a zero-entity stub and the
+	// boundary pass fills it from main's manifest (worktree/stub).
+	if s.worktree != "" && !worktreeFlag {
 		return starlark.None, nil
 	}
 
@@ -419,6 +414,7 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 		links:             links.Links,
 		labels:            labelMap,
 		discoveryStrategy: v1alpha1.KubernetesDiscoveryStrategy(discoveryStrategy),
+		worktreeInherit:   worktreeFlag,
 	})
 
 	return starlark.None, nil
