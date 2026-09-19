@@ -84,10 +84,13 @@ jobs:
 
           build() {
             local goos="$1" goarch="$2" cc="$3" name="$4"
-            # CXX must follow CC: cgo external links use the C++ compiler,
-            # and the default native g++ fails on cross objects (linux arm64:
-            # ld.gold "unsupported ELF machine number 183").
+            # CXX must follow CC: cgo external links C++ objects with the C++
+            # compiler. Two rules: *gcc -> *g++ (cross gcc default CXX is the
+            # native g++, whose gold chokes on foreign-arch objects), and
+            # clang -> clang++ (plain clang drops -lc++, failing the link on
+            # vendored C++ (tree-sitter) with missing libstdc++ symbols).
             local cxx="${cc/gcc/g++}"
+            cxx="${cxx/clang/clang++}"
             echo "::group::build ${name} (GOOS=${goos} GOARCH=${goarch})"
             CGO_ENABLED=1 GOOS="$goos" GOARCH="$goarch" CC="$cc" CXX="$cxx" \
               go build -mod=vendor -tags=osusergo -trimpath -ldflags "$LDFLAGS" \
